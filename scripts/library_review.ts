@@ -10,6 +10,9 @@
 //  1. COVER_MISSING      - cover_path is NULL/''/'missing' -> placeholder art.
 //  2. COVER_ORPHAN       - cover_path points at an object that is not in the
 //                          `covers` bucket -> the client gets a broken image.
+//  2b.COVER_REJECTED_CANDIDATE - a sentinel item still has a stored cover
+//                          object. It is art that already FAILED review, so it
+//                          must never be adopted just because it is present.
 //  3. TRACK_COUNT_DRIFT  - num_tracks disagrees with jsonb_array_length
 //                          (audio_files). The trigger should make this
 //                          impossible; if it fires, the trigger is missing.
@@ -187,6 +190,28 @@ for (const it of items ?? []) {
         ? "cover_path='missing' (terminal sentinel) -> placeholder art"
         : "cover_path is empty -> placeholder art",
     });
+
+    // A sentinel item can still have a stored `<id>/cover.*` object. That
+    // object is a CANDIDATE THAT WAS ALREADY REJECTED, not a cover waiting to
+    // be adopted -- the sentinel is only written after the fetched art failed
+    // review, and every one of these was confirmed by eye to be a different
+    // book. Reported explicitly so this never reads as a recoverable orphan:
+    // "point cover_path at the object that is already there" is precisely the
+    // wrong repair, and an audit that stayed silent about the object would
+    // invite it.
+    const candidate = [...coverObjects].find((p) => p.startsWith(`${it.id}/`));
+    if (candidate) {
+      add({
+        check: "COVER_REJECTED_CANDIDATE",
+        severity: "low",
+        itemId: it.id,
+        title,
+        detail:
+          `cover_path is the terminal sentinel but '${candidate}' exists in the bucket. ` +
+          "This is rejected art, not an unadopted cover. Do NOT point cover_path at it " +
+          "without a fresh vision check; prefer deleting the object or leaving the placeholder.",
+      });
+    }
   } else if (coverObjects.size > 0 && !coverObjects.has(coverPath)) {
     // 2. cover orphan
     add({
