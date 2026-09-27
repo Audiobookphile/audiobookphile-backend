@@ -139,3 +139,32 @@ Deno.test("mapBookForMobile: list mode still advertises playability", () => {
     "list mode must report a numTracks so the shelf can decide playability",
   );
 });
+
+Deno.test("mapBookForMobile: the terminal 'missing' cover sentinel reaches the client verbatim", () => {
+  // cover_path = 'missing' is a terminal verdict: the backend confirmed the
+  // work genuinely has no art. The cover endpoint answers it with a JSON 404
+  // that the browser blocks in an <img> (ORB), so the client short-circuits
+  // it to the local placeholder. The mapper used to rewrite the sentinel to
+  // the API URL, which made that short-circuit dead code in production and
+  // sent every sentinel item on a request that could never succeed.
+  const mapped = mapBookForMobile(
+    fakeBook({ cover_path: "missing" }) as never,
+  ) as { media: { coverPath?: string | null } };
+  assertEquals(
+    mapped.media?.coverPath,
+    "missing",
+    "the sentinel must be emitted verbatim, not rewritten to the cover API URL",
+  );
+});
+
+Deno.test("mapBookForMobile: a null cover path still maps to the cover API URL", () => {
+  // Null means "unknown, let the endpoint try the providers on the fly" --
+  // the opposite verdict from 'missing', and it must keep requesting.
+  const mapped = mapBookForMobile(
+    fakeBook({ cover_path: null }) as never,
+  ) as { media: { coverPath?: string | null } };
+  assertEquals(
+    mapped.media?.coverPath,
+    "/api/items/11111111-1111-4111-8111-111111111111/cover",
+  );
+});

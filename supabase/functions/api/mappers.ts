@@ -90,6 +90,14 @@ function _formatCoverPath(
   rawPath: string | null | undefined,
   itemId: string,
 ): string | null {
+  // The terminal "missing" verdict must reach the client verbatim. The cover
+  // endpoint answers it with a JSON 404, which the browser blocks in an <img>
+  // request (ORB), so the client short-circuits it to the local placeholder.
+  // Rewriting it here to the API URL -- as this function used to do -- doomed
+  // every sentinel item to a request that could never succeed, while the
+  // client-side short-circuit sat dead because no payload ever carried the
+  // sentinel.
+  if (rawPath === "missing") return rawPath;
   if (!rawPath) return `/api/items/${itemId}/cover`;
   if (rawPath.startsWith("http") || rawPath.startsWith("/")) return rawPath;
   return `/api/items/${itemId}/cover`;
