@@ -17,6 +17,34 @@ const CollectionUpdateSchema = z.object({
 
 const CollectionItemsPayloadSchema = z.array(z.string()); // array of library item IDs
 
+/**
+ * Build one `collection_items` row per requested library item.
+ *
+ * Exported for its test rather than inlined, because the bug it replaced was
+ * invisible to every type checker and to the response shape: the handler
+ * validated the whole array and then wrote only `parsed.data[0]`, so adding three
+ * books to a collection returned 200, the first book appeared, and the other two
+ * were silently discarded. Nothing about the reply distinguished that from a
+ * complete success.
+ *
+ * `order` continues from the collection's current item count, and each row gets
+ * its own position so the collection keeps its display order.
+ */
+export function buildCollectionItemRows(
+  collectionId: string,
+  libraryItemIds: string[],
+  existingCount: number,
+): Array<
+  { id: string; collection_id: string; library_item_id: string; order: number }
+> {
+  return libraryItemIds.map((libraryItemId, index) => ({
+    id: crypto.randomUUID(),
+    collection_id: collectionId,
+    library_item_id: libraryItemId,
+    order: existingCount + index,
+  }));
+}
+
 const ServerErrorSchema = z.object({ error: z.string() });
 const CollectionResultSchema = z.record(z.string(), z.any());
 const SuccessSchema = z.object({ success: z.boolean() });
@@ -294,12 +322,11 @@ collectionsRouter.openapi(addCollectionItemsRoute, async (c) => {
   // position. This loop previously wrote only `parsed.data[0]`: the validation
   // above walked the whole array, so a multi-item add reported success while
   // silently discarding everything after the first book.
-  const insertRows = parsed.data.map((libraryItemId, index) => ({
-    id: crypto.randomUUID(),
-    collection_id: collectionId,
-    library_item_id: libraryItemId,
-    order: (count ?? 0) + index,
-  }));
+  const insertRows = buildCollectionItemRows(
+    collectionId,
+    parsed.data,
+    count ?? 0,
+  );
   const { error: insertError } = await supabase
     .from("collection_items")
     .insert(insertRows);
