@@ -1,5 +1,5 @@
 import { createOpenApiRouter, z } from "../_shared/openapi.ts";
-import { sanitizeString } from "../_shared/validation.ts";
+import { sanitizeSearchToken, sanitizeString } from "../_shared/validation.ts";
 import { ZAI_CHAT_MODEL } from "../../_shared/zai.ts";
 
 /**
@@ -309,7 +309,21 @@ async function handleSmartSearch(c: Context<{ Variables: Variables }>) {
   );
   if (libraryId) dbQuery = dbQuery.eq("library_id", libraryId);
 
-  const term = (searchIntent.terms?.[0] || queryText).trim();
+  // `term` is escaped before it reaches the `or=` filter for two reasons. First,
+  // the same grammar hazard as the library shelf route: `,` `(` `)` `:` `%` and
+  // `.` are structure to PostgREST, so a term containing any of them corrupts the
+  // group and the whole request 500s. Second, and more specific to this handler,
+  // the preferred term usually does NOT come from the user -- it comes from
+  // `JSON.parse` of raw LLM output, which is untrusted input arriving by a
+  // side channel. Sanitising the user's `query` at :259 does nothing for it.
+  // The fallback to `queryText` is already sanitised, and sanitising is
+  // idempotent, so one pass covers both branches.
+  const term = sanitizeSearchToken(
+    (searchIntent.terms?.[0] || queryText).trim(),
+  );
+  if (!term) {
+    return c.json({ error: "Query is required" }, 400);
+  }
   dbQuery = dbQuery.or(
     `title.ilike.%${term}%,author_names_first_last.ilike.%${term}%,description.ilike.%${term}%,subtitle.ilike.%${term}%,publisher.ilike.%${term}%`,
   );

@@ -36,6 +36,34 @@ export function sanitizeString(input: string): string {
 }
 
 /**
+ * Strip the characters that are STRUCTURE to a PostgREST `or=` filter.
+ *
+ * supabase-js `.or()` takes a raw filter string, so any caller-supplied value is
+ * interpolated into a mini-grammar where `,` `(` `)` `:` `%` and `.` are
+ * operators, not literals. An unescaped value does two things at once:
+ *
+ *  - it corrupts the group, so PostgREST rejects the query and the endpoint
+ *    500s. This is reachable with ordinary text: the title
+ *    "Sapiens: A Brief History of Humankind, 2015" contains both `:` and `,`.
+ *  - it lets the caller append their own disjuncts to the filter, because the
+ *    value is spliced in mid-expression rather than passed as a parameter.
+ *
+ * `%` and `.` go too: they are the `ilike` wildcard and its separator, so
+ * leaving them lets a one-character search match every row.
+ *
+ * This is deliberately lossy. It is applied to the SEARCH TERM of a text search,
+ * where dropping punctuation is the desired behaviour anyway -- a user typing
+ * "Sapiens: A Brief History" still matches the title. It must never be applied
+ * to a value that is meant to survive round-trip, and it is not a substitute for
+ * parameterised queries where one is available.
+ *
+ * Idempotent, so it is safe to apply to a value that was already sanitised.
+ */
+export function sanitizeSearchToken(input: string): string {
+  return input.replace(/[,():%.*]/g, "").trim();
+}
+
+/**
  * Create a sanitized string schema with max length validation.
  * The optional pattern is checked BEFORE sanitization (ZodEffects from
  * `.transform()` exposes no string checks, so regex must come first).

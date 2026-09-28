@@ -8,6 +8,7 @@ import { requireAdminRole } from "../_shared/auth.ts";
 import { smartSortLibraryItems } from "../../_shared/zai.ts";
 import { createOpenApiRouter, SuccessSchema, z } from "../_shared/openapi.ts";
 import { assertStorageQuota } from "../../_shared/storage-quota.ts";
+import { sanitizeSearchToken } from "../_shared/validation.ts";
 
 export const librariesRouter = createOpenApiRouter();
 
@@ -726,8 +727,19 @@ librariesRouter.openapi(libraryItemsRoute, async (c) => {
 
   const { column: dbSortField } = parseSortParams(sortParam, isDesc);
 
-  const search = (queryParams.get("q") || queryParams.get("search") || "")
-    .trim();
+  // Sanitised here, at the single point it enters, because the two `.or()`
+  // filters below are built by string interpolation and PostgREST's `or=` grammar
+  // treats `,` `(` `)` `:` `%` and `.` as structure. Unescaped, an ordinary title
+  // like "Sapiens: A Brief History of Humankind, 2015" produced a malformed
+  // `or=(...)` group, the query was rejected, and the shelf endpoint returned 500
+  // with the raw parser message. It also let a caller append their own
+  // disjuncts to the filter. The sibling `/:id/search` route already sanitises
+  // per token -- these two sites were simply missed. Sanitising at the read also
+  // normalises the cache key, so punctuation
+  // variants of one query share a cache entry instead of each minting their own.
+  const search = sanitizeSearchToken(
+    (queryParams.get("q") || queryParams.get("search") || "").trim(),
+  );
   const authorId = queryParams.get("authorId");
   const seriesId = queryParams.get("seriesId");
   // List mode (default): slim shelf payloads (no per-file track data). The
@@ -978,10 +990,6 @@ librariesRouter.openapi(smartSortRoute, async (c) => {
     200,
   );
 });
-
-function sanitizeSearchToken(input: string): string {
-  return input.replace(/[,():%.*]/g, "").trim();
-}
 
 librariesRouter.openapi(librarySearchRoute, async (c) => {
   const supabase = c.get("supabase");
