@@ -36,6 +36,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # All three audiobookphile repos run on one self-hosted macOS host. A
+      # starved box kills the Deno type-checker or the test runner mid-run, and
+      # the resulting error is indistinguishable from a real type error. Check
+      # the host before the expensive work rather than after the confusing one.
+      - name: Host Pressure Preflight
+        id: host
+        run: ./scripts/host-pressure.sh
+
       - name: Setup Deno
         id: deno
         uses: denoland/setup-deno@v2
@@ -84,6 +92,13 @@ jobs:
             "checkout:Checkout Repository|deno:Setup Deno|trufflehog:TruffleHog Secret Scanner|bun:Setup Bun|deps:Install Dependencies|pre_commit:Run Lefthook pre-commit|pre_push:Run Lefthook pre-push" \
             "checkout=${{ steps.checkout.outcome }};deno=${{ steps.deno.outcome }};trufflehog=${{ steps.trufflehog.outcome }};bun=${{ steps.bun.outcome }};deps=${{ steps.deps.outcome }};pre_commit=${{ steps.pre_commit.outcome }}"
           bunx lefthook run pre-push --all-files
+
+      # Always runs, so a failure above is read alongside the host state that
+      # produced it. A red gate on a calm box is a product signal; a red gate on
+      # a thrashing box is not.
+      - name: Host Pressure Postmortem
+        if: always()
+        run: ./scripts/host-pressure.sh --report
 
   deploy:
     name: Deploy to Supabase Production

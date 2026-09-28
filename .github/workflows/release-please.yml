@@ -12,6 +12,7 @@ permissions:
 jobs:
   release-please:
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 15
     steps:
       - uses: googleapis/release-please-action@v4
         with:
