@@ -387,3 +387,111 @@ Deno.test("AuthZ Matrix: user-facing routes remain open to members", async () =>
     "public health",
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Progress payload contract
+//
+// `progress` used to be REQUIRED by ProgressPayloadSchema, and the batch
+// endpoint accepted only a top-level array. Between them, every "mark finished"
+// and "remove from Continue Listening" action in the web client returned 400:
+//
+//   PATCH /api/me/progress/:id      {isFinished, episodeId}     -> 400 Required
+//   PATCH /api/me/progress-batch    {items:[...]}               -> 400 Expected array
+//
+// Both are now accepted, which is what the shared upsertMediaProgress always
+// supported. These assert the HTTP contract so the loosening cannot silently
+// regress, and so the refine() that rejects a content-free body is pinned too.
+// ─────────────────────────────────────────────────────────────────────────────
+
+Deno.test("progress: a finish-only payload is accepted without a position", async () => {
+  const token = await mintToken("member-1");
+  // No `progress`, no `duration`: marking finished is an intent in its own
+  // right and is independent of playback position.
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      isFinished: true,
+    }),
+    200,
+    "mark finished with no position",
+  );
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      isFinished: true,
+      episodeId: "ep-1",
+    }),
+    200,
+    "mark episode finished",
+  );
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      hideFromContinueListening: true,
+    }),
+    200,
+    "hide from Continue Listening with no position",
+  );
+});
+
+Deno.test("progress: a position-only payload still works", async () => {
+  const token = await mintToken("member-1");
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      progress: 0.42,
+      duration: 3600,
+    }),
+    200,
+    "position-only update",
+  );
+});
+
+Deno.test("progress: an out-of-range position is still rejected", async () => {
+  const token = await mintToken("member-1");
+  // The loosening must not have removed the bound that stops a bogus resume
+  // position being written (the Sapiens 19.8h-duration incident).
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      progress: 19.8,
+    }),
+    400,
+    "progress above 1 must be rejected",
+  );
+});
+
+Deno.test("progress: a body with nothing to write is still rejected", async () => {
+  const token = await mintToken("member-1");
+  // Without this, an empty body would return 200 having written nothing, which
+  // at the call site is indistinguishable from a real success.
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {}),
+    400,
+    "empty payload must be rejected",
+  );
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress/item-1", token, {
+      unknownField: true,
+    }),
+    400,
+    "unknown-fields-only payload must be rejected",
+  );
+});
+
+Deno.test("progress: the batch endpoint accepts both wire shapes", async () => {
+  const token = await mintToken("member-1");
+  const entries = [
+    { libraryItemId: "item-1", isFinished: true },
+    { libraryItemId: "item-2", isFinished: true },
+  ];
+  // The shape the web client sends.
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress-batch", token, {
+      items: entries,
+    }),
+    200,
+    "batch as {items:[...]}",
+  );
+  // The shape this endpoint originally accepted, kept working.
+  assertEquals(
+    await requestStatus("PATCH", "/api/me/progress-batch", token, entries),
+    200,
+    "batch as a top-level array",
+  );
+});

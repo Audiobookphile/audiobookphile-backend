@@ -5,21 +5,65 @@ import { Variables } from "../_shared/types.ts";
 
 export const progressRouter = createOpenApiRouter();
 
-const ProgressPayloadSchema = z.object({
+// Field definition only. `.refine()` returns a ZodEffects, which exposes no
+// `.extend()`, so the shape is declared once here and the two derived schemas
+// below are built from THIS, not from the refined one -- the same ZodEffects
+// trap already documented on sanitizedString in _shared/validation.ts.
+const ProgressFieldsSchema = z.object({
   episodeId: z.string().optional(),
-  progress: z.number().min(0).max(1),
+  progress: z.number().min(0).max(1).optional(),
   duration: z.number().min(0).optional(),
   isFinished: z.boolean().optional(),
   hideFromContinueListening: z.boolean().optional(),
 });
 
-const BatchProgressPayloadSchema = z.array(
-  ProgressPayloadSchema.extend({
-    libraryItemId: z.string(),
-  }),
+// `progress` is OPTIONAL, matching upsertMediaProgress in _shared/progress.ts,
+// which has always declared every field optional.
+//
+// It used to be required here, which meant the two other intents this endpoint
+// exists to serve could never be expressed: "mark finished" and "remove from
+// Continue Listening" are independent of playback position, and a caller
+// sending only `{isFinished: true}` or only `{hideFromContinueListening: true}`
+// was rejected 400 before reaching the handler. The web client's
+// toggleFinishedAction and removeFromContinueListeningAction do exactly that,
+// so the checkbox on every book card 400'd and the item reappeared on the
+// Continue Listening shelf on the next load.
+//
+// The refine() is what stops the loosening from becoming a silent no-op: an
+// empty or all-unknown body is still a 400, because a 200 that wrote nothing
+// would be indistinguishable from a real success at the call site.
+const ProgressPayloadSchema = ProgressFieldsSchema.refine(
+  (v) =>
+    v.progress !== undefined || v.duration !== undefined ||
+    v.isFinished !== undefined || v.hideFromContinueListening !== undefined,
+  {
+    message:
+      "At least one of progress, duration, isFinished or hideFromContinueListening is required",
+  },
 );
 
-const LegacyProgressPayloadSchema = ProgressPayloadSchema.extend({
+const ProgressEntrySchema = ProgressFieldsSchema.extend({
+  libraryItemId: z.string(),
+});
+
+// The batch endpoint accepted a top-level ARRAY only, but the web client sends
+// `{items: [...]}`, so "mark all as finished" 400'd with
+// "Expected array, received object". Both shapes are accepted so neither client
+// has to be wrong about the other's contract.
+const BatchProgressPayloadSchema = z.union([
+  z.array(ProgressEntrySchema),
+  z.object({ items: z.array(ProgressEntrySchema) }),
+]);
+
+/** Normalise the two accepted batch shapes to a single array. */
+function batchEntries(
+  parsed: z.infer<typeof BatchProgressPayloadSchema>,
+): z.infer<typeof ProgressEntrySchema>[] {
+  return Array.isArray(parsed) ? parsed : parsed.items;
+}
+
+// Built from the unrefined field schema -- see the ZodEffects note above.
+const LegacyProgressPayloadSchema = ProgressFieldsSchema.extend({
   libraryItemId: z.string().optional(),
   itemId: z.string().optional(),
 });
@@ -267,7 +311,7 @@ progressRouter.openapi(updateProgressBatchRoute, async (c) => {
 
   try {
     const rawBody = await c.req.json();
-    items = BatchProgressPayloadSchema.parse(rawBody);
+    items = batchEntries(BatchProgressPayloadSchema.parse(rawBody));
   } catch (e: unknown) {
     const zodErrors = e instanceof Object && "errors" in e
       ? (e as { errors: unknown }).errors
