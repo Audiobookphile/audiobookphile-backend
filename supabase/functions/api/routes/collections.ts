@@ -15,7 +15,37 @@ const CollectionUpdateSchema = z.object({
   description: z.string().max(4096).optional(),
 });
 
-const CollectionItemsPayloadSchema = z.array(z.string()); // array of library item IDs
+/**
+ * Payload for "add these books to an existing collection".
+ *
+ * This endpoint, `POST /api/collections/:id/items`, had three incompatible
+ * dialects in circulation and no two agreed:
+ *
+ *   - the create-collection route above takes `{ items: [...] }`
+ *   - this route took a bare `[...]`
+ *   - the web client sent `{ libraryItemId: "..." }`, matching neither
+ *
+ * So "Add to collection" failed for every user with
+ * `400 Expected array, received object`, and the modal showed its generic
+ * failure toast. Nothing about the mismatch was discoverable from either side.
+ *
+ * `{ items: [...] }` is now the canonical shape because the create route already
+ * established it, and one envelope is what a client can learn. The bare array is
+ * still accepted so any other caller keeps working, and the reader is tolerant
+ * rather than strict: a schema that rejects a shape a sibling route in the same
+ * file accepts is the bug, not the caller.
+ */
+const CollectionItemsPayloadSchema = z.union([
+  z.object({ items: z.array(z.string()) }),
+  z.array(z.string()),
+]);
+
+/** Normalise the accepted shapes to a single array of library item IDs. */
+function collectionItemIds(
+  parsed: z.infer<typeof CollectionItemsPayloadSchema>,
+): string[] {
+  return Array.isArray(parsed) ? parsed : parsed.items;
+}
 
 /**
  * Build one `collection_items` row per requested library item.
@@ -303,7 +333,8 @@ collectionsRouter.openapi(addCollectionItemsRoute, async (c) => {
   }
 
   // Validate each item ID as UUID
-  for (const itemId of parsed.data) {
+  const itemIds = collectionItemIds(parsed.data);
+  for (const itemId of itemIds) {
     try {
       z.string().uuid().parse(itemId);
     } catch (_e) {
@@ -324,7 +355,7 @@ collectionsRouter.openapi(addCollectionItemsRoute, async (c) => {
   // silently discarding everything after the first book.
   const insertRows = buildCollectionItemRows(
     collectionId,
-    parsed.data,
+    itemIds,
     count ?? 0,
   );
   const { error: insertError } = await supabase

@@ -530,3 +530,85 @@ Deno.test("progress: removing one item from Continue Listening uses the implemen
     "delete progress by id",
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collection add-item payload contract
+//
+// This endpoint had three dialects in flight and no two agreed: the create route
+// takes `{items:[...]}`, this route took a bare array, and the web client sent
+// `{libraryItemId}`. "Add to collection" therefore failed for every user with
+// 400 "Expected array, received object" — a mismatch that was invisible from
+// either side of the wire. These pin every accepted shape.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COLLECTION_ID = "22222222-3333-4444-5555-666666666666";
+const ITEM_A = "11111111-1111-1111-1111-111111111111";
+const ITEM_B = "11111111-1111-1111-1111-222222222222";
+
+Deno.test("collections: the add-item endpoint accepts the canonical envelope", async () => {
+  const token = await mintToken("member-1");
+  // The shape the create route already used, and now the one the web client sends.
+  assertEquals(
+    await requestStatus(
+      "POST",
+      `/api/collections/${COLLECTION_ID}/items`,
+      token,
+      {
+        items: [ITEM_A, ITEM_B],
+      },
+    ),
+    200,
+    "add items as {items:[...]}",
+  );
+});
+
+Deno.test("collections: the add-item endpoint still accepts a bare array", async () => {
+  const token = await mintToken("member-1");
+  // Kept for any other caller; a tolerant reader costs nothing.
+  assertEquals(
+    await requestStatus(
+      "POST",
+      `/api/collections/${COLLECTION_ID}/items`,
+      token,
+      [ITEM_A],
+    ),
+    200,
+    "add items as a bare array",
+  );
+});
+
+Deno.test("collections: a non-UUID item id is still rejected", async () => {
+  const token = await mintToken("member-1");
+  // The union must not have loosened the per-id UUID check that follows it.
+  assertEquals(
+    await requestStatus(
+      "POST",
+      `/api/collections/${COLLECTION_ID}/items`,
+      token,
+      {
+        items: ["not-a-uuid"],
+      },
+    ),
+    400,
+    "non-UUID item id must be rejected",
+  );
+});
+
+Deno.test("collections: a shape matching neither dialect is still rejected", async () => {
+  const token = await mintToken("member-1");
+  // The exact payload the web client used to send. It is now fixed client-side,
+  // but the server must not accept it: an object with no `items` key is not a
+  // valid request and silently ignoring the id would be another silent no-op.
+  assertEquals(
+    await requestStatus(
+      "POST",
+      `/api/collections/${COLLECTION_ID}/items`,
+      token,
+      {
+        libraryItemId: ITEM_A,
+      },
+    ),
+    400,
+    "{libraryItemId} must be rejected, not silently ignored",
+  );
+});
