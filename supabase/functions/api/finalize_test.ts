@@ -335,7 +335,13 @@ Deno.test("finalize: duplicate book with overwrite=true rebinds to existing reco
   const files = item.audio_files as any[];
   assertEquals(files.length, 2); // Chapter 01 merged (dedup), Chapter 02 added
   const ch1 = files.find((f: any) => f.metadata.filename === "Chapter 01.mp3");
-  assertEquals(ch1.metadata.path, "b2-tertiary://book-1/Chapter 01.mp3");
+  // The recorded path is re-derived from the authenticated user (see
+  // _shared/uploadScope.ts) so it always matches the object presign actually
+  // wrote, and the storage scheme — which selects the bucket tier — is preserved.
+  assertEquals(
+    ch1.metadata.path,
+    "b2-tertiary://uploads/test-user/book-1/Chapter 01.mp3",
+  );
   assertEquals(item.size, 100 + 12347 * 2);
 });
 
@@ -541,10 +547,11 @@ Deno.test("finalize: structured re-upload of a flat book rebinds by basename wit
   const rows = item.audio_files as any[];
   assertEquals(rows.length, 2);
   const ch1 = rows.find((r: any) => r.metadata.filename === "Chapter 01.mp3");
-  // Adopts the fresh structured path while preserving the proven duration.
+  // Adopts the fresh structured path while preserving the proven duration, and
+  // carries the per-user upload scope with the scheme intact.
   assertEquals(
     ch1.metadata.path,
-    `b2-test://${bookUuid}/Disc 1/Chapter 01.mp3`,
+    `b2-test://uploads/test-user/${bookUuid}/Disc 1/Chapter 01.mp3`,
   );
   assertEquals(ch1.duration, 60);
   assertEquals(item.duration, 60);

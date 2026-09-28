@@ -3,6 +3,10 @@ import { StorageRouter } from "../../_shared/storage-router.ts";
 import { getConfiguredTiers } from "../../_shared/b2-config.ts";
 import { requireAdminRole } from "../_shared/auth.ts";
 import { presignUpload } from "../../_shared/uploadPresign.ts";
+import {
+  buildScopedUploadKey,
+  tryScopeUploadPath,
+} from "../../_shared/uploadScope.ts";
 import { assertStorageQuota } from "../../_shared/storage-quota.ts";
 import {
   analyzeItemWarnings,
@@ -665,8 +669,20 @@ async function handleUploadPresign(c: Context<{ Variables: Variables }>) {
     }
   }
 
+  // Derive the object key from the AUTHENTICATED user rather than the
+  // caller-supplied filename. Previously `filename` became the B2 key verbatim,
+  // so a member could presign (and then overwrite) any other member's track --
+  // library item ids are enumerable -- and could pass `../` segments through
+  // unchallenged. See _shared/uploadScope.ts.
+  let scopedFilename: string;
   try {
-    const res = await presignUpload(supabase, filename, contentType);
+    scopedFilename = buildScopedUploadKey(user.id, filename);
+  } catch (e: unknown) {
+    return c.json({ error: getErrorMessage(e) }, 400);
+  }
+
+  try {
+    const res = await presignUpload(supabase, scopedFilename, contentType);
     return c.json(res as Record<string, any>, 200);
   } catch (e: unknown) {
     return c.json({ error: getErrorMessage(e) }, 500);
@@ -934,7 +950,17 @@ export async function executeFinalize(
       metadata: {
         filename: rawName,
         ext,
-        path: file.storagePath,
+        // Re-derived from the authenticated user rather than stored as sent. The
+        // client posts back whatever path it believes presign used; re-applying
+        // the same scoping rule (idempotently) guarantees the recorded path
+        // matches the object that was actually written, including its storage
+        // scheme, which selects the bucket tier.
+        //
+        // tryScopeUploadPath, not buildScopedUploadKey: finalize is specified to
+        // tolerate traversal segments in a storagePath and neutralise them into
+        // relPath, so throwing here would 500 an upload that previously
+        // succeeded. See the function's doc for what that leaves open.
+        path: tryScopeUploadPath(user.id, file.storagePath),
         relPath: relKey || rawName,
         size: file.size,
         duration: probedDuration,
