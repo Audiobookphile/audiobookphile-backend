@@ -165,6 +165,10 @@ const updateProgressSeriesRoute = {
         "application/json": { schema: z.record(z.string(), z.any()) },
       },
     },
+    501: {
+      description: "Not implemented (see handler)",
+      content: { "application/json": { schema: ServerErrorSchema } },
+    },
   },
 };
 
@@ -340,11 +344,25 @@ progressRouter.openapi(updateProgressBatchRoute, async (c) => {
 });
 
 progressRouter.openapi(updateProgressSeriesRoute, async (c) => {
-  // For series, we might update a separate table or user preferences
-  return c.json({
-    success: true,
-    message: "Not fully implemented for Supabase yet",
-  }, 200);
+  // This was a stub that returned 200 {success: true} without writing anything.
+  // A caller checking the status saw success and reasonably concluded the series
+  // was updated, so "remove series from Continue Listening" reported having
+  // worked while the shelf was untouched. Reporting the truth instead means the
+  // failure is loud (the web client surfaces its generic error toast) instead of
+  // silent, until the endpoint is actually implemented.
+  //
+  // Implementing it means defining the product rule first: "mark every in-progress
+  // item in the series finished" is one plausible reading and "hide the whole
+  // series" another, and the two write different rows. That is a decision, not a
+  // bug fix, so it is deliberately left to be specified rather than guessed at.
+  return c.json(
+    {
+      success: false,
+      error: "Not implemented",
+      message: "Series-level progress updates are not implemented yet",
+    },
+    501,
+  );
 });
 
 progressRouter.openapi(deleteProgressRoute, async (c) => {

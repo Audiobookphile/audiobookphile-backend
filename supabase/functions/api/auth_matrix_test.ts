@@ -495,3 +495,38 @@ Deno.test("progress: the batch endpoint accepts both wire shapes", async () => {
     "batch as a top-level array",
   );
 });
+
+Deno.test("progress: the series endpoint no longer claims success it cannot deliver", async () => {
+  const token = await mintToken("member-1");
+  // The handler is a stub. It used to answer 200 {success: true} without writing
+  // anything, so a caller concluded the series was updated while the Continue
+  // Listening shelf was untouched. It must now fail loudly.
+  const res = await app.request(
+    new Request("http://localhost/api/me/progress/series/series-1", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }),
+  );
+  assertEquals(res.status, 501, "series progress must report not-implemented");
+  const body = await res.json() as { success: boolean };
+  assertEquals(
+    body.success,
+    false,
+    "must not report success for work not done",
+  );
+});
+
+Deno.test("progress: removing one item from Continue Listening uses the implemented route", async () => {
+  const token = await mintToken("member-1");
+  // The web client used to PATCH this path, which is not a route, so every use
+  // 404'd while the item stayed on the shelf. DELETE is what the server
+  // implements, and it is scoped to the caller's own user_id.
+  assertEquals(
+    await requestStatus("DELETE", "/api/me/progress/id/progress-1", token),
+    200,
+    "delete progress by id",
+  );
+});
