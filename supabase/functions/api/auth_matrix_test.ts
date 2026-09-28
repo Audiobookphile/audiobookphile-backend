@@ -612,3 +612,99 @@ Deno.test("collections: a shape matching neither dialect is still rejected", asy
     "{libraryItemId} must be rejected, not silently ignored",
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Playlist contract
+//
+// The web client called three routes the server did not implement, so "Delete
+// playlist", "Add to playlist" and "Remove from playlist" all failed:
+//   DELETE  /api/playlists/:id            -> 404 (no such route)
+//   POST    /api/playlists/:id/batch-add  -> 404
+//   POST    /api/playlists/:id/batch-remove -> 404
+// The two operations that DID exist (`POST` and `DELETE /:id/items`) also
+// disagreed with the client on payload shape: a bare array for add, a single
+// object for delete, against the client's `{items: [...]}`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PLAYLIST_ID = "33333333-4444-5555-6666-777777777777";
+const PLAYLIST_ITEM = "44444444-5555-6666-7777-888888888888";
+
+Deno.test("playlists: the client routes now exist", async () => {
+  const token = await mintToken("member-1");
+  assertEquals(
+    await requestStatus("DELETE", `/api/playlists/${PLAYLIST_ID}`, token),
+    200,
+    "delete a playlist (was 404)",
+  );
+});
+
+Deno.test("playlists: add accepts the client's {items:[...]} envelope", async () => {
+  const token = await mintToken("member-1");
+  assertEquals(
+    await requestStatus("POST", `/api/playlists/${PLAYLIST_ID}/items`, token, {
+      items: [{ libraryItemId: PLAYLIST_ITEM, order: 0 }],
+    }),
+    200,
+    "batch add as {items:[...]}",
+  );
+  // The original shape still works for any other caller.
+  assertEquals(
+    await requestStatus("POST", `/api/playlists/${PLAYLIST_ID}/items`, token, [
+      { libraryItemId: PLAYLIST_ITEM, order: 0 },
+    ]),
+    200,
+    "add as a bare array",
+  );
+});
+
+Deno.test("playlists: remove accepts a batch and still accepts a single item", async () => {
+  const token = await mintToken("member-1");
+  assertEquals(
+    await requestStatus(
+      "DELETE",
+      `/api/playlists/${PLAYLIST_ID}/items`,
+      token,
+      {
+        items: [{ libraryItemId: PLAYLIST_ITEM }],
+      },
+    ),
+    200,
+    "batch remove as {items:[...]}",
+  );
+  assertEquals(
+    await requestStatus(
+      "DELETE",
+      `/api/playlists/${PLAYLIST_ID}/items`,
+      token,
+      {
+        libraryItemId: PLAYLIST_ITEM,
+      },
+    ),
+    200,
+    "remove a single item (the original contract)",
+  );
+});
+
+Deno.test("playlists: a malformed item id is still rejected", async () => {
+  const token = await mintToken("member-1");
+  // The unions must not have loosened the per-item uuid check.
+  assertEquals(
+    await requestStatus("POST", `/api/playlists/${PLAYLIST_ID}/items`, token, {
+      items: [{ libraryItemId: "not-a-uuid" }],
+    }),
+    400,
+    "non-uuid libraryItemId must be rejected on add",
+  );
+  assertEquals(
+    await requestStatus(
+      "DELETE",
+      `/api/playlists/${PLAYLIST_ID}/items`,
+      token,
+      {
+        items: [{ libraryItemId: "not-a-uuid" }],
+      },
+    ),
+    400,
+    "non-uuid libraryItemId must be rejected on remove",
+  );
+});
