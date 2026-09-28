@@ -213,6 +213,12 @@ const protectedRoutes: Array<[string, string]> = [
   ["POST", "/api/libraries/library-1/scan"],
   ["POST", "/api/libraries/library-1/smart-sort"],
   ["POST", "/api/libraries/library-1/deduplicate"],
+  // A GET, but it rewrites every item in the library and re-uploads covers --
+  // same mutation class as scan/smart-sort/deduplicate above.
+  ["GET", "/api/libraries/library-1/matchall"],
+  // Service-role raw-row dump, and attacker-controlled Sentry event injection.
+  ["GET", "/api/debug/item-1"],
+  ["POST", "/api/debug/sentry-test"],
   ["DELETE", `/api/items/${ITEM_ID}`],
   ["DELETE", "/api/items/item-1/cover"],
   ["POST", "/api/items/item-1/cover"],

@@ -290,13 +290,23 @@ collectionsRouter.openapi(addCollectionItemsRoute, async (c) => {
       head: true,
     })
     .eq("collection_id", collectionId);
-  const newId = crypto.randomUUID();
-  await supabase.from("collection_items").insert({
-    id: newId,
+  // Insert EVERY validated id, in one statement, each with its own order
+  // position. This loop previously wrote only `parsed.data[0]`: the validation
+  // above walked the whole array, so a multi-item add reported success while
+  // silently discarding everything after the first book.
+  const insertRows = parsed.data.map((libraryItemId, index) => ({
+    id: crypto.randomUUID(),
     collection_id: collectionId,
-    library_item_id: parsed.data[0],
-    order: count ?? 0,
-  });
+    library_item_id: libraryItemId,
+    order: (count ?? 0) + index,
+  }));
+  const { error: insertError } = await supabase
+    .from("collection_items")
+    .insert(insertRows);
+  if (insertError) {
+    console.error("[collections] Insert items error:", insertError);
+    return c.json({ error: "Failed to add items to collection" }, 500);
+  }
 
   const { data, error } = await supabase.from("collections").select(
     "*, collection_items(*)",

@@ -1,7 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.44.0";
 import { Sentry } from "../../_shared/sentry.ts";
+import { requireAdminRole } from "../_shared/auth.ts";
 
-import { createOpenApiRouter, z } from "../_shared/openapi.ts";
+import { createOpenApiRouter, ForbiddenSchema, z } from "../_shared/openapi.ts";
 
 export const debugRouter = createOpenApiRouter();
 
@@ -21,11 +22,25 @@ const debugItemRoute = {
       description: "Query failure",
       content: { "application/json": { schema: ServerErrorSchema } },
     },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
   },
 };
 
 debugRouter.openapi(debugItemRoute, async (c) => {
-  const _user = c.get("user")!;
+  // Reads `library_items` with the SERVICE ROLE and returns the raw row: the
+  // internal B2 object layout in `audio_files[].metadata.path` and the pgvector
+  // `embedding` column, both of which the public /api/items/:id mapper
+  // deliberately strips. `_requiresServiceRole` below is a vestigial local,
+  // not an enforced check -- the request was previously authenticated but not
+  // authorised, so any signed-in member could dump it. The sibling dev-only
+  // sentryRouter is secret-gated, which is the intent here too.
+  const user = c.get("user");
+  if (!requireAdminRole(user)) {
+    return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
   const supabaseUrl = c.get("supabaseUrl") as string;
   const serviceRoleKey = c.get("serviceRoleKey") as string;
   const _adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -68,10 +83,21 @@ const sentryTestRoute = {
         },
       },
     },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
   },
 };
 
 debugRouter.openapi(sentryTestRoute, async (c) => {
+  // Un-gated, this let any signed-in member push attacker-chosen exception
+  // messages into the production Sentry project -- filling the issue list with
+  // noise and polluting the on-call triage pipeline.
+  const user = c.get("user");
+  if (!requireAdminRole(user)) {
+    return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
   const body = c.req.valid("json");
   const testError = new Error(body.message);
 

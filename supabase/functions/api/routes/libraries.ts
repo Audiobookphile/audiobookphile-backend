@@ -316,6 +316,12 @@ const matchAllRoute = {
         "application/json": { schema: SuccessSchema },
       },
     },
+    403: {
+      description: "Admin role required",
+      content: {
+        "application/json": { schema: ForbiddenSchema },
+      },
+    },
   },
 };
 
@@ -1244,6 +1250,18 @@ librariesRouter.openapi(filterDataRoute, (c) => {
 });
 
 librariesRouter.openapi(matchAllRoute, async (c) => {
+  // This route is a GET, but it is NOT a read: it walks every item in the
+  // library and overwrites description, year, publisher, language, genres and
+  // cover_path from provider metadata, and uploads cover images to Supabase
+  // Storage. That is the same class of mutation as the sibling `/:id/scan`,
+  // `/:id/smart-sort` and `/:id/deduplicate` routes, all of which are
+  // admin-gated. Without the gate any signed-in member could re-scrape a whole
+  // library from a plain link, destroying curated metadata and burning provider
+  // rate limits.
+  const user = c.get("user");
+  if (!requireAdminRole(user)) {
+    return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
   const supabase = c.get("supabase");
   const { id: libraryId } = c.req.valid("param");
 

@@ -83,6 +83,10 @@ const updatePlaylistRoute = {
       description: "Database error",
       content: { "application/json": { schema: ServerErrorSchema } },
     },
+    404: {
+      description: "No playlist with that id belongs to the caller",
+      content: { "application/json": { schema: ServerErrorSchema } },
+    },
   },
 };
 
@@ -204,6 +208,7 @@ playlistsRouter.openapi(createPlaylistRoute, async (c) => {
 
 playlistsRouter.openapi(updatePlaylistRoute, async (c) => {
   const supabase = c.get("supabase");
+  const user = c.get("user");
   const { id: playlistId } = c.req.valid("param");
 
   let body;
@@ -228,17 +233,26 @@ playlistsRouter.openapi(updatePlaylistRoute, async (c) => {
       description,
     })
     .eq("id", playlistId)
+    // A playlist is a personal object -- `user_id` is written on create -- so
+    // the id alone is not proof of ownership. Without this filter any signed-in
+    // user could rename or re-describe anybody else's playlist by guessing (or
+    // enumerating) its id.
+    .eq("user_id", user?.id ?? "")
     .select()
     .single();
   if (error) {
     console.error("[playlists] Update error:", error);
     return c.json({ error: "Failed to update playlist" }, 500);
   }
+  if (!data) {
+    return c.json({ error: "Playlist not found" }, 404);
+  }
   return c.json(data, 200);
 });
 
 playlistsRouter.openapi(addPlaylistItemsRoute, async (c) => {
   const supabase = c.get("supabase");
+  const user = c.get("user");
   const { id: playlistId } = c.req.valid("param");
 
   let rows;
@@ -268,11 +282,18 @@ playlistsRouter.openapi(addPlaylistItemsRoute, async (c) => {
     order: (count ?? 0) + index,
     media_item_type: "book",
   }));
-  await supabase.from("playlist_media_items").insert(insertRows);
+  // The insert's error was discarded, so a failed write still returned 200 with
+  // the playlist unchanged and the caller saw a silent success.
+  const { error: insertError } = await supabase.from("playlist_media_items")
+    .insert(insertRows);
+  if (insertError) {
+    console.error("[playlists] Insert items error:", insertError);
+    return c.json({ error: "Failed to add items to playlist" }, 500);
+  }
 
   const { data, error } = await supabase.from("playlists").select(
     "*, playlist_media_items(*)",
-  ).eq("id", playlistId).single();
+  ).eq("id", playlistId).eq("user_id", user?.id ?? "").single();
   if (error) {
     console.error("[playlists] Add items error:", error);
     return c.json({ error: "Failed to add items to playlist" }, 500);
@@ -282,6 +303,7 @@ playlistsRouter.openapi(addPlaylistItemsRoute, async (c) => {
 
 playlistsRouter.openapi(deletePlaylistItemRoute, async (c) => {
   const supabase = c.get("supabase");
+  const user = c.get("user");
   const { id: playlistId } = c.req.valid("param");
 
   let body;
@@ -304,7 +326,7 @@ playlistsRouter.openapi(deletePlaylistItemRoute, async (c) => {
 
   const { data, error } = await supabase.from("playlists").select(
     "*, playlist_media_items(*)",
-  ).eq("id", playlistId).single();
+  ).eq("id", playlistId).eq("user_id", user?.id ?? "").single();
   if (error) {
     console.error("[playlists] Delete item error:", error);
     return c.json({ error: "Failed to delete item from playlist" }, 500);
