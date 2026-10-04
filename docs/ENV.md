@@ -69,7 +69,7 @@ survive re-syncs. All generated files are gitignored.
 ### Error-remediation workflow (`error-remediation.yml`)
 
 Runs daily at 03:00 UTC (plus `workflow_dispatch`). Needs these GitHub Actions
-secrets on `organicnz/audiobookphile-backend` (workflow warns and skips while
+secrets on `Audiobookphile/audiobookphile-backend` (workflow warns and skips while
 missing):
 
 | Secret              | Value                                          |

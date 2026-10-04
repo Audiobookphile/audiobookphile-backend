@@ -10,7 +10,7 @@
  *   SENTRY_ORG          Sentry org slug (default: organicnz)
  *   SENTRY_PROJECT      Sentry project slug (default: audiobookphile-backend)
  *   GITHUB_TOKEN        GitHub token with issues:write permission
- *   GITHUB_REPOSITORY   GitHub repo slug (e.g. organicnz/audiobookphile-backend)
+ *   GITHUB_REPOSITORY   GitHub repo slug (e.g. Audiobookphile/audiobookphile-backend)
  */
 
 const env = Deno.env.toObject();
