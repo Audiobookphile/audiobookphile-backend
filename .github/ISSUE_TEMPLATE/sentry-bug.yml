@@ -1,7 +1,7 @@
 name: "🐛 Sentry Bug Report"
 description: "Report a bug detected by Sentry error monitoring"
 labels: ["bug", "sentry", "auto-generated"]
-assignees: ["Audiobookphile"]
+assignees: ["organicnz"]
 body:
   - type: markdown
     attributes:
