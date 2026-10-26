@@ -17,7 +17,8 @@ permissions:
 jobs:
   backup:
     name: Database Snapshot Backup
-    runs-on: [self-hosted, macOS]
+    # Portable toolchain: any compatible VPS slot can execute this job.
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 15
     steps:
       - name: Trigger Automated Backup
@@ -47,7 +48,8 @@ jobs:
   storage-reconcile:
     name: Intelligent Storage Reconciliation & Fixture Purge
     needs: backup
-    runs-on: [self-hosted, macOS]
+    # Portable toolchain: any compatible VPS slot can execute this job.
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 15
     steps:
       - name: Trigger Storage Reconciliation
@@ -105,7 +107,8 @@ jobs:
   storage-quota:
     name: Storage Quota & Capacity Check
     needs: [backup, storage-reconcile]
-    runs-on: [self-hosted, macOS]
+    # Portable toolchain: any compatible VPS slot can execute this job.
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 10
     steps:
       - name: Checkout Repository
@@ -128,7 +131,8 @@ jobs:
   integrity-audit:
     name: Detect Corrupted Library Items
     needs: storage-quota
-    runs-on: [self-hosted, macOS]
+    # Portable toolchain: any compatible VPS slot can execute this job.
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 20
     steps:
       - name: Checkout Repository
@@ -186,7 +190,8 @@ jobs:
 
   error-remediation:
     name: Sentry Error Remediation & PR Generator
-    runs-on: [self-hosted, macOS]
+    # Portable toolchain: any compatible VPS slot can execute this job.
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 30
     env:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
