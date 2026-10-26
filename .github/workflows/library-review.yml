@@ -36,10 +36,15 @@ concurrency:
 jobs:
   review:
     name: Consistency Audit
-    runs-on: [self-hosted, macOS]
+    # This read-only Deno audit is portable; use the remote Linux VPS pool.
+    # Only the canonical main branch may supply code to these private workers.
+    if: github.repository == 'Audiobookphile/audiobookphile-backend' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: denoland/setup-deno@v2
         with:
