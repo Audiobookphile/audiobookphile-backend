@@ -16,6 +16,20 @@ import { createClient } from "npm:@supabase/supabase-js@2.44.0";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Context, Next } from "hono";
 import { Variables } from "./types.ts";
+import { timingSafeEqual } from "node:crypto";
+
+export function timingSafeEqualString(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const enc = new TextEncoder();
+  const aBuf = enc.encode(a);
+  const bBuf = enc.encode(b);
+  if (aBuf.byteLength !== bBuf.byteLength) return false;
+  try {
+    return timingSafeEqual(aBuf, bBuf);
+  } catch {
+    return false;
+  }
+}
 
 export const isRole = (
   role: string | undefined | null,
@@ -297,11 +311,19 @@ export async function authMiddleware(
     const serviceRoleKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
     if (
       (cronSecret &&
-        (token === cronSecret ||
-          authorizationHeader === `Bearer ${cronSecret}`)) ||
+        (timingSafeEqualString(token, cronSecret) ||
+          (authorizationHeader &&
+            timingSafeEqualString(
+              authorizationHeader,
+              `Bearer ${cronSecret}`,
+            )))) ||
       (serviceRoleKeyEnv &&
-        (token === serviceRoleKeyEnv ||
-          authorizationHeader === `Bearer ${serviceRoleKeyEnv}`))
+        (timingSafeEqualString(token, serviceRoleKeyEnv) ||
+          (authorizationHeader &&
+            timingSafeEqualString(
+              authorizationHeader,
+              `Bearer ${serviceRoleKeyEnv}`,
+            ))))
     ) {
       c.set("user", {
         id: "cron",

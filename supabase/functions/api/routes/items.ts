@@ -462,12 +462,13 @@ itemsRouter.openapi(checkExistingRoute, async (c) => {
     //    whose title shares the first 3 characters (covers most typos/subtitle
     //    variants without a full-table scan).
     const prefix = title.slice(0, 3);
+    const escapedPrefix = prefix.replace(/[%_\\]/g, "\\$&");
     const { data: candidates } = await supabase
       .from("library_items")
       .select("id, title")
       .eq("library_id", libraryId)
       .eq("media_type", mediaType)
-      .ilike("title", `${prefix}%`)
+      .ilike("title", `${escapedPrefix}%`)
       .limit(100);
 
     if (candidates) {

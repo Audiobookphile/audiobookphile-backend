@@ -17,6 +17,7 @@ import {
   authErrorHandlers,
   decodeJWT,
   requireAdminRole,
+  timingSafeEqualString,
   verifyJWT,
 } from "../_shared/auth.ts";
 import { generate2FAChallengeToken } from "../_shared/totp.ts";
@@ -1334,9 +1335,19 @@ const e2eProvisionRoute = {
 };
 
 authRouter.openapi(e2eProvisionRoute, async (c) => {
+  const isProduction = Deno.env.get("ENVIRONMENT") === "production" ||
+    Deno.env.get("NODE_ENV") === "production" ||
+    Deno.env.get("DENO_ENV") === "production";
+  if (isProduction) {
+    return c.json({
+      error: "Endpoint disabled in production",
+      code: "DISABLED",
+    }, 403);
+  }
+
   const expected = Deno.env.get("E2E_PROVISIONING_SECRET") ?? "";
   const provided = c.req.header("X-E2E-Secret") ?? "";
-  if (expected.length === 0 || provided !== expected) {
+  if (expected.length === 0 || !timingSafeEqualString(provided, expected)) {
     return c.json({ error: "Forbidden", code: "FORBIDDEN" }, 403);
   }
 

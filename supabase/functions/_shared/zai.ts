@@ -2,12 +2,20 @@
 
 import { titlesLikelySameWork } from "./titleMatch.ts";
 
+function getEnvOrDefault(key: string, fallback: string): string {
+  try {
+    return Deno.env.get(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Chat model for all z.ai calls. glm-4-flash was retired upstream (API now
  * returns error 1211 "model not found"), which silently degraded every AI
  * feature to its heuristic fallback. Overridable via ZAI_MODEL edge secret.
  */
-export const ZAI_CHAT_MODEL = Deno.env.get("ZAI_MODEL") ?? "glm-4.5-air";
+export const ZAI_CHAT_MODEL = getEnvOrDefault("ZAI_MODEL", "glm-4.5-air");
 
 const cacheMap = new Map<string, { result: any; expiresAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minute in-memory TTL

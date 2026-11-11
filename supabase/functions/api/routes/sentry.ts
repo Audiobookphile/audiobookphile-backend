@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { Sentry } from "../../_shared/sentry.ts";
+import { requireAdminRole } from "../_shared/auth.ts";
+import { Variables } from "../_shared/types.ts";
 
-const sentryRouter = new Hono();
+const sentryRouter = new Hono<{ Variables: Variables }>();
 
 /**
  * Sentry health check endpoint
@@ -17,17 +19,28 @@ sentryRouter.get("/health", async (c) => {
   const sendTest = c.req.query("test") === "true";
   let testEventId: string | undefined;
 
-  if (sendTest && initialized) {
-    try {
-      testEventId = Sentry.captureMessage("Sentry health check ping", "debug");
-    } catch (err) {
+  if (sendTest) {
+    const user = c.get("user");
+    if (!requireAdminRole(user)) {
       return c.json({
-        healthy: false,
-        initialized,
-        error: `Test event failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      }, 500);
+        error: "Forbidden: Admin access required for test event",
+      }, 403);
+    }
+    if (initialized) {
+      try {
+        testEventId = Sentry.captureMessage(
+          "Sentry health check ping",
+          "debug",
+        );
+      } catch (err) {
+        return c.json({
+          healthy: false,
+          initialized,
+          error: `Test event failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        }, 500);
+      }
     }
   }
 
@@ -48,6 +61,11 @@ sentryRouter.get("/health", async (c) => {
  * Used by scheduled tasks to report their status
  */
 sentryRouter.post("/cron/:monitorSlug", async (c) => {
+  const user = c.get("user");
+  if (!requireAdminRole(user)) {
+    return c.json({ error: "Forbidden: Admin or cron caller required" }, 403);
+  }
+
   const monitorSlug = c.req.param("monitorSlug");
   const body = await c.req.json().catch(() => ({}));
   const status = body.status || "in_progress";
