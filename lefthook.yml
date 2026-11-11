@@ -3,18 +3,18 @@ pre-commit:
   commands:
     lint-and-check:
       glob: "*.{ts,sql,json,yml}"
-      run: ./scripts/pre-commit.sh {staged_files}
+      run: bash ./scripts/pre-commit.sh {staged_files}
 
 commit-msg:
   commands:
     conventional-commit:
-      run: ./scripts/commit-msg.sh {1}
+      run: bash ./scripts/commit-msg.sh {1}
 
 pre-push:
   parallel: false
   commands:
     security-audit:
-      run: ./scripts/security-audit.sh
+      run: bash ./scripts/security-audit.sh
     typecheck-and-test:
       run: deno check --config supabase/functions/deno.json supabase/functions/api/index.ts && deno test -A --config supabase/functions/deno.json supabase/functions/api/
 

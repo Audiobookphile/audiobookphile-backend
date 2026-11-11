@@ -217,7 +217,10 @@ async function main() {
   // session token for authed targets
   const email = `ai-probe-${Date.now()}@audiobookphile.test`;
   const password = `Probe-${crypto.randomUUID().slice(0, 12)}!`;
-  await fetch(`${URL_BASE}/auth/v1/admin/users`, {
+  let probeUserId = "";
+  let token = "";
+
+  const createUserRes = await fetch(`${URL_BASE}/auth/v1/admin/users`, {
     method: "POST",
     headers: {
       apikey: SVC,
@@ -226,12 +229,28 @@ async function main() {
     },
     body: JSON.stringify({ email, password, email_confirm: true }),
   });
-  const login = await fetch(`${URL_BASE}/functions/v1/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: email, password }),
-  }).then((r) => r.json());
-  const token = String(login?.user?.token ?? "");
+
+  if (createUserRes.ok) {
+    const createdData = await createUserRes.json();
+    probeUserId = String(createdData?.id ?? "");
+    const loginRes = await fetch(`${URL_BASE}/functions/v1/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: email, password }),
+    });
+    if (loginRes.ok) {
+      const login = await loginRes.json();
+      token = String(login?.user?.token ?? "");
+    } else {
+      console.warn(
+        `[ai-probe] Login failed for probe user: ${loginRes.status}`,
+      );
+    }
+  } else {
+    console.warn(
+      `[ai-probe] Failed to create probe user: ${createUserRes.status}`,
+    );
+  }
 
   const results: {
     provider: string;
@@ -288,25 +307,35 @@ async function main() {
     }
   }
 
-  // cleanup probe user profiles (best effort, only when management token present)
-  const mgmt = Deno.env.get("SUPABASE_ACCESS_TOKEN") ?? "";
-  if (mgmt) {
-    const ref = URL_BASE.match(/https:\/\/(.+)\.supabase\.co/)?.[1] ?? "";
-    if (ref) {
-      await fetch(
-        `https://api.supabase.com/v1/projects/${ref}/database/query`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${mgmt}`,
-            "Content-Type": "application/json",
+  // cleanup probe user (first via Admin API if userId known, fallback to mgmt SQL)
+  if (probeUserId && SVC) {
+    await fetch(`${URL_BASE}/auth/v1/admin/users/${probeUserId}`, {
+      method: "DELETE",
+      headers: {
+        apikey: SVC,
+        Authorization: `Bearer ${SVC}`,
+      },
+    }).catch(() => {});
+  } else {
+    const mgmt = Deno.env.get("SUPABASE_ACCESS_TOKEN") ?? "";
+    if (mgmt) {
+      const ref = URL_BASE.match(/https:\/\/(.+)\.supabase\.co/)?.[1] ?? "";
+      if (ref) {
+        await fetch(
+          `https://api.supabase.com/v1/projects/${ref}/database/query`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${mgmt}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              query:
+                `DELETE FROM public.profiles WHERE username LIKE 'ai-probe-%'`,
+            }),
           },
-          body: JSON.stringify({
-            query:
-              `DELETE FROM public.profiles WHERE username LIKE 'ai-probe-%'`,
-          }),
-        },
-      ).catch(() => {});
+        ).catch(() => {});
+      }
     }
   }
 
