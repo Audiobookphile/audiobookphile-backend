@@ -1,7 +1,8 @@
 {
   "entries": [
-    {
-      "path": "/Users/organic/dev/work/AI/skills/skills/engineering/improve-codebase-architecture"
-    }
+    { "path": "./skills/edge-api-handler" },
+    { "path": "./skills/supabase-migrations" },
+    { "path": "./skills/hybrid-storage" },
+    { "path": "./skills/security-audit" }
   ]
 }
