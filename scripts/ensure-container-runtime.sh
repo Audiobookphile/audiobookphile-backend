@@ -61,6 +61,12 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # ---------------------------------------------------------------------------
 ENGINE=""
 
+if have trufflehog; then
+  log "Native TruffleHog binary detected ($(~/.local/bin/trufflehog --version 2>/dev/null || trufflehog --version)); container engine not required."
+  echo "CONTAINER_ENGINE=native-trufflehog" >> "${GITHUB_ENV:-/dev/null}"
+  exit 0
+fi
+
 if have docker && bounded "$PROBE_SECONDS" docker info; then
   ENGINE="docker"
   log "Container engine: Docker (daemon already responding)."

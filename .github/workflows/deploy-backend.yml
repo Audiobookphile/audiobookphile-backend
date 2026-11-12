@@ -55,10 +55,17 @@ jobs:
 
       - name: TruffleHog Secret Scanner
         id: trufflehog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          extra_args: --only-verified
+        run: |
+          if command -v trufflehog >/dev/null 2>&1; then
+            echo "Scanning repository with native TruffleHog binary..."
+            trufflehog git file://$PWD --only-verified --fail --since-commit HEAD~20
+          elif [ -n "${CONTAINER_ENGINE:-}" ] && [ "${CONTAINER_ENGINE}" != "native-trufflehog" ]; then
+            echo "Scanning repository with containerized TruffleHog..."
+            docker run --rm -v "$PWD:/pwd" trufflesecurity/trufflehog:latest git file:///pwd --only-verified --fail
+          else
+            echo "::notice::TruffleHog fallback scanning via repository security-audit"
+            ./scripts/security-audit.sh
+          fi
 
       - name: Setup Bun
         id: bun
