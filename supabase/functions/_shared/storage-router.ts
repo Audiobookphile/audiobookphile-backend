@@ -199,11 +199,20 @@ export class StorageRouter {
     }
 
     if (parsed.tier === "SUPABASE") {
-      throw new Error(
-        `Audio path "${path}" points at Supabase, but audiobooks are B2-only ` +
-          `(Supabase storage is covers/light assets only). Re-upload the file ` +
-          `via B2 presign so its metadata.path becomes b2(-tier)://…`,
-      );
+      if (!this.supabase?.storage) {
+        throw new Error("Supabase storage client not available");
+      }
+      const { data, error } = await this.supabase.storage
+        .from("audio-files")
+        .createSignedUrl(parsed.key.replace(/^\/+/, ""), expiresIn);
+      if (error || !data?.signedUrl) {
+        throw new Error(
+          `Failed to create signed URL from Supabase storage: ${
+            error?.message || "unknown"
+          }`,
+        );
+      }
+      return data.signedUrl;
     }
 
     if (!isTierConfigured(parsed.tier)) {
@@ -365,17 +374,32 @@ export class StorageRouter {
       }
     }
 
+    // Fallback: check Supabase storage audio-files bucket if B2 missed or is unconfigured
+    if (this.supabase?.storage) {
+      try {
+        const { data, error } = await this.supabase.storage
+          .from("audio-files")
+          .createSignedUrl(cleanKey, expiresIn);
+        if (!error && data?.signedUrl) {
+          return {
+            signedUrl: data.signedUrl,
+            canonicalPath: `supabase://${cleanKey}`,
+          };
+        }
+      } catch {
+        // proceed to not found error
+      }
+    }
+
     throw new Error(
-      `File not found in any B2 bucket for key "${cleanKey}" (probed tiers: ${
+      `File not found in any storage backend for key "${cleanKey}" (probed tiers: ${
         getConfiguredTiers().join(", ") || "none configured"
       })`,
     );
   }
 
   /* -------------------------------------------------------------------------
-   * fileExists — checks if an AUDIO file exists at the given path (B2-only).
-   * supabase:// audio URIs always return false: audio never lives in
-   * Supabase (covers bucket only).
+   * fileExists — checks if an AUDIO file exists at the given path.
    * ------------------------------------------------------------------------- */
 
   async fileExists(path: string): Promise<boolean> {
@@ -385,7 +409,25 @@ export class StorageRouter {
     }
 
     if (parsed.tier === "SUPABASE") {
-      return false;
+      if (!this.supabase?.storage) return false;
+      try {
+        const cleanKey = parsed.key.replace(/^\/+/, "");
+        const lastSlash = cleanKey.lastIndexOf("/");
+        const prefix = lastSlash !== -1 ? cleanKey.slice(0, lastSlash) : "";
+        const filename = lastSlash !== -1
+          ? cleanKey.slice(lastSlash + 1)
+          : cleanKey;
+        const { data, error } = await this.supabase.storage.from("audio-files")
+          .list(prefix, {
+            limit: 100,
+            search: filename,
+          });
+        return Boolean(
+          !error && data && data.some((f: any) => f.name === filename),
+        );
+      } catch {
+        return false;
+      }
     }
 
     if (!isTierConfigured(parsed.tier)) {
@@ -442,10 +484,23 @@ export class StorageRouter {
       return { status: "unsupported", error: "Unsupported storage path" };
     }
     if (parsed.tier === "SUPABASE") {
-      return {
-        status: "unsupported",
-        error: "Supabase audio is not supported",
-      };
+      if (!this.supabase?.storage) {
+        return {
+          status: "unsupported",
+          error: "Supabase client not available",
+        };
+      }
+      try {
+        const cleanKey = parsed.key.replace(/^\/+/, "");
+        const { error } = await this.supabase.storage.from("audio-files")
+          .remove([cleanKey]);
+        if (error) {
+          return { status: "failed", error: error.message };
+        }
+        return { status: "deleted" };
+      } catch (err: any) {
+        return { status: "failed", error: err?.message };
+      }
     }
     if (parsed.isLegacy) {
       if (!itemId) {
