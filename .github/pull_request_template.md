@@ -21,3 +21,4 @@
 - [ ] Row Level Security (RLS) is enabled and tested on any new/modified tables.
 - [ ] I have verified Edge Functions with `deno test`.
 - [ ] My changes do not expose any secrets, private tokens, or proprietary credentials.
+
