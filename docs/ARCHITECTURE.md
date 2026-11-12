@@ -57,3 +57,4 @@ The Audiobookphile backend provides a completely serverless, high-concurrency AP
    - `root`: Global system administrator.
    - `admin`: Library and user administrator.
    - `member`: Standard listener with restricted permissions.
+

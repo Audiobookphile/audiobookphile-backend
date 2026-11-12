@@ -83,3 +83,4 @@ Health check endpoint reporting API uptime and database connectivity.
 
 ### `POST /api/backup-database`
 *(Admin only)* Triggers an immediate schema and data export backup.
+

@@ -85,3 +85,4 @@ User listening progress tracking.
 | `library_items` | `SELECT` | `authenticated` | Permitted for all authenticated users |
 | `library_items` | `ALL` | `authenticated` | `public.is_admin()` |
 | `media_progress` | `ALL` | `authenticated` | `auth.uid() = user_id` |
+

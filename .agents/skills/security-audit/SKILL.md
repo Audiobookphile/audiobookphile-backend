@@ -22,3 +22,4 @@ Every pull request and git push executes `scripts/security-audit.sh` via Lefthoo
    bash scripts/security-audit.sh
    ```
    Must exit with code `0` and scan all tracked files cleanly.
+

@@ -26,3 +26,4 @@ All backend endpoints are executed serverlessly as Deno Edge Functions inside `s
      ```bash
      deno test --config supabase/functions/deno.json --allow-all supabase/functions/api/
      ```
+

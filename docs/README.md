@@ -26,3 +26,4 @@ deno test --config supabase/functions/deno.json --allow-all supabase/functions/a
 # Synchronize local environment files across repos
 bash scripts/sync-env.sh
 ```
+

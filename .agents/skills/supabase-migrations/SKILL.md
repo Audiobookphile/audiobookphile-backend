@@ -20,3 +20,4 @@ description: Guidelines for authoring PostgreSQL migrations, Row Level Security 
 4. **Verification**:
    - Run `supabase db reset` locally to test migration replayability from scratch.
    - Ensure `deno test` passes against the new schema.
+

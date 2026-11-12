@@ -61,3 +61,4 @@ deno test --config supabase/functions/deno.json --allow-all supabase/functions/a
 bash scripts/security-audit.sh
 ```
 The audit scans 235+ files for hardcoded localhost URLs, secret leakage, and missing error handlers.
+

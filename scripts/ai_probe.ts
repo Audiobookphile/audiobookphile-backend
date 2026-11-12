@@ -26,18 +26,19 @@ const URL_BASE = Deno.env.get("SUPABASE_URL") ?? "";
 const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const GROQ = Deno.env.get("GROQ_API_KEY") ?? "";
 const ZAI = Deno.env.get("ZAI_API_KEY") ?? "";
+const PROBE_ITEM_ID = Deno.env.get("AI_PROBE_ITEM_ID") ??
+  "029bb772-cea8-4d3f-882a-1bf9f54198d8";
 
 const TARGETS = [
   { endpoint: "/functions/v1/api/health", method: "GET" },
   { endpoint: "/functions/v1/api/me", method: "GET", auth: true },
   {
-    endpoint: "/functions/v1/api/items/029bb772-cea8-4d3f-882a-1bf9f54198d8",
+    endpoint: `/functions/v1/api/items/${PROBE_ITEM_ID}`,
     method: "GET",
     auth: true,
   },
   {
-    endpoint:
-      "/functions/v1/api/items/029bb772-cea8-4d3f-882a-1bf9f54198d8/cover",
+    endpoint: `/functions/v1/api/items/${PROBE_ITEM_ID}/cover`,
     method: "GET",
   },
   { endpoint: "/functions/v1/api/libraries", method: "GET", auth: true },

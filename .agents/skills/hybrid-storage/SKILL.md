@@ -24,3 +24,4 @@ Audiobookphile uses a cost-optimized, high-throughput dual-tier storage strategy
 3. **Rust CLI Storage Management**:
    - The `audiobookphile-cli` tool in `crates/cli` manages bulk uploads and backups.
    - It reads `SUPABASE_URL` dynamically from the environment and enforces multi-part uploads with retry exponential backoff.
+
