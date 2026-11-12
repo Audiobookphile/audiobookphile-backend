@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::*;
 use std::env;
 
@@ -7,7 +7,7 @@ pub async fn check_storage_health() -> Result<bool> {
 
     let supabase_url = env::var("SUPABASE_URL")
         .or_else(|_| env::var("NEXT_PUBLIC_SUPABASE_URL"))
-        .unwrap_or_else(|_| "https://kfidobawnbziftwxavyl.supabase.co".to_string());
+        .context("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL environment variable is required")?;
 
     let service_key = env::var("SUPABASE_SERVICE_ROLE_KEY")
         .or_else(|_| env::var("SUPABASE_ANON_KEY"))

@@ -26,6 +26,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 SOURCE="$ROOT/env/local.env"
+if [[ ! -f "$SOURCE" && -f "$ROOT/env/local.env.example" ]]; then
+  echo "Notice: env/local.env not found. Creating from env/local.env.example..."
+  cp "$ROOT/env/local.env.example" "$SOURCE"
+fi
 [[ -f "$SOURCE" ]] || { echo "error: source not found: $SOURCE" >&2; exit 1; }
 
 # resolve_side <rel> — find a sibling repo dir

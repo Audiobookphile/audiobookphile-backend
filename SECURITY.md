@@ -15,28 +15,28 @@ Please include the following in your report:
 - Step-by-step instructions to reproduce the issue
 - Potential impact of the vulnerability
 
-## Supported Versions
-
-Security updates are provided for the latest stable version only.
-
 ## Scope
 
-This repository covers the Next.js frontend client. The Supabase backend
-(database, auth, storage) is managed separately. For Supabase-specific security
-concerns, refer to the
-[Supabase security documentation](https://supabase.com/docs/guides/platform/security).
+This repository covers the Audiobookphile Supabase backend, including PostgreSQL
+database schemas, migrations, Row Level Security (RLS) policies, and Deno Edge
+Functions.
 
 ### Key Security Boundaries
 
-- `SUPABASE_SERVICE_ROLE_KEY` is used server-side only (Route Handlers and
-  Server Actions). It is never exposed to the browser or included in the client
-  bundle.
-- Row Level Security (RLS) is enabled on all Supabase tables. Application-layer
-  checks are a secondary defence.
-- Audio files are stored in a private Supabase Storage bucket and accessed only
-  via time-limited signed URLs generated server-side.
-- OAuth callbacks are handled via `src/app/auth/callback/route.ts` using
-  `supabase.auth.exchangeCodeForSession()`.
+- Row Level Security (RLS) is strictly enforced at the database engine level on
+  every public table. All client access is bounded by user ownership or tenant
+  isolation.
+- Supabase Vault (`vault.secrets`) encrypts production credentials and Sentry
+  DSNs at rest, accessible only through the security-definer function
+  `public.read_secret()` restricted to `service_role`.
+- Edge Functions authenticate incoming requests with Supabase JWT bearer tokens
+  and validate role-based scopes (`user_type` = `root`, `admin`, `user`).
+- Storage audio files and private attachments use time-limited presigned S3/B2
+  URLs generated on demand.
+
+## Supported Versions
+
+Security updates are provided for the latest release on the `main` branch.
 
 ## Acknowledgements
 

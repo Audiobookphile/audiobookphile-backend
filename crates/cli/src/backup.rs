@@ -10,7 +10,7 @@ pub async fn run_backup(output_dir: &Path) -> Result<()> {
 
     let supabase_url = env::var("SUPABASE_URL")
         .or_else(|_| env::var("NEXT_PUBLIC_SUPABASE_URL"))
-        .unwrap_or_else(|_| "https://kfidobawnbziftwxavyl.supabase.co".to_string());
+        .context("SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL environment variable is required")?;
 
     let service_key = env::var("SUPABASE_SERVICE_ROLE_KEY")
         .context("SUPABASE_SERVICE_ROLE_KEY is required for full table snapshots")?;
