@@ -27,7 +27,7 @@ const SVC = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const GROQ = Deno.env.get("GROQ_API_KEY") ?? "";
 const ZAI = Deno.env.get("ZAI_API_KEY") ?? "";
 const PROBE_ITEM_ID = Deno.env.get("AI_PROBE_ITEM_ID") ??
-  "029bb772-cea8-4d3f-882a-1bf9f54198d8";
+  "b0000000-0000-0000-0000-000000000001";
 
 const TARGETS = [
   { endpoint: "/functions/v1/api/health", method: "GET" },
