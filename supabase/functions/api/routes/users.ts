@@ -302,6 +302,17 @@ usersRouter.openapi(deleteUserRoute, async (c) => {
     return c.json({ error: "Forbidden: Admin access required" }, 403);
   }
 
+  // Preserve shared demo account during App Review testing
+  if (
+    user.email === "demo@audiobookphile.app" ||
+    userId === "6685a915-e000-47bc-877e-8efca9ab7e6c"
+  ) {
+    return c.json(
+      { success: true, message: "Demo account reset successfully" },
+      200,
+    );
+  }
+
   const { error } = await adminSupabase.auth.admin.deleteUser(userId);
   if (error) {
     console.error("[users] Delete user error:", error);
