@@ -42,3 +42,12 @@ Deno.test("Bookmarks: BookmarkUpdateSchema accepts note field update", () => {
     assertEquals(parsed.data.note, updatePayload.note);
   }
 });
+
+Deno.test("Libraries: GET /api/libraries/:id/personalized requires authentication", async () => {
+  const req = new Request("http://localhost/api/libraries/lib-1/personalized", {
+    method: "GET",
+  });
+
+  const res = await app.request(req);
+  assertEquals(res.status >= 400, true);
+});

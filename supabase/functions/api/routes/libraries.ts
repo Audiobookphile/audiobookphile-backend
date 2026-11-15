@@ -1831,6 +1831,89 @@ librariesRouter.openapi(personalizedRoute, async (c) => {
     });
   }
 
+  // --- Continue Series (Next in Series) ---
+  // When a user finished an item in a series, recommend the next uncompleted item in that series.
+  let continueSeriesItems: any[] = [];
+  if (listenAgainResult.data && listenAgainResult.data.length > 0) {
+    const finishedItemIds = (listenAgainResult.data as any[]).map((p) =>
+      p.library_item_id
+    );
+    const { data: finishedSeriesData } = await supabase
+      .from("book_series")
+      .select("series_id, sequence, library_item_id, series(id, name)")
+      .in("library_item_id", finishedItemIds);
+
+    if (finishedSeriesData && finishedSeriesData.length > 0) {
+      const finishedMap = new Map<string, boolean>(
+        finishedItemIds.map((id: string) => [id, true]),
+      );
+      const seriesMaxMap = new Map<
+        string,
+        { seriesId: string; maxSeq: number }
+      >();
+      for (const row of finishedSeriesData) {
+        if (!row.series_id) continue;
+        const seq = parseFloat(row.sequence ?? "0") || 0;
+        const existing = seriesMaxMap.get(row.series_id);
+        if (!existing || seq > existing.maxSeq) {
+          seriesMaxMap.set(row.series_id, {
+            seriesId: row.series_id,
+            maxSeq: seq,
+          });
+        }
+      }
+
+      const targetSeriesIds = Array.from(seriesMaxMap.keys());
+      if (targetSeriesIds.length > 0) {
+        const { data: allSeriesBooks } = await supabase
+          .from("book_series")
+          .select(`
+            series_id,
+            sequence,
+            library_items (${LIST_ITEM_SELECT})
+          `)
+          .in("series_id", targetSeriesIds);
+
+        if (allSeriesBooks) {
+          for (const [seriesId, meta] of seriesMaxMap.entries()) {
+            const candidates = (allSeriesBooks as any[])
+              .filter((bs) =>
+                bs.series_id === seriesId && bs.library_items &&
+                bs.library_items.library_id === libraryId
+              )
+              .map((bs) => ({ ...bs, seqVal: parseFloat(bs.sequence) || 0 }))
+              .filter((bs) =>
+                bs.seqVal > meta.maxSeq && !finishedMap.has(bs.library_items.id)
+              )
+              .sort((a, b) => a.seqVal - b.seqVal);
+
+            if (candidates.length > 0) {
+              const nextBook = candidates[0].library_items;
+              continueSeriesItems.push(
+                mapBookForMobile(
+                  nextBook as unknown as LibraryItemWithBooks,
+                  null,
+                  { includeFiles: false },
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (continueSeriesItems.length > 0) {
+    shelves.push({
+      id: "continue-series",
+      label: "Continue Series",
+      labelStringKey: "LabelContinueSeries",
+      type: "book",
+      entities: continueSeriesItems,
+      total: continueSeriesItems.length,
+    });
+  }
+
   shelves.push({
     id: "recently-added",
     label: "Recently Added",
