@@ -116,6 +116,8 @@ jobs:
     concurrency:
       group: deploy-backend-prod-${{ github.ref }}
       cancel-in-progress: false
+    outputs:
+      deployed: ${{ steps.check_creds.outputs.has_creds }}
     steps:
       - name: Checkout Repository
         id: checkout
@@ -126,22 +128,42 @@ jobs:
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" cli \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }}"
           echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           export PATH="/opt/homebrew/bin:$PATH"
           which supabase >/dev/null 2>&1 || brew install supabase/tap/supabase
           supabase --version
 
+      - name: Check Supabase Credentials & Token Validity
+        id: check_creds
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_ID" ]; then
+            echo "::notice::SUPABASE_ACCESS_TOKEN or SUPABASE_PROJECT_ID not set. Skipping automated Supabase deployment."
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects")
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::notice::SUPABASE_ACCESS_TOKEN is invalid or expired (HTTP $HTTP_STATUS). Skipping automated Supabase deployment."
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Repair Migration History
         id: repair
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" repair \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }}"
           # One-time repair: commit 5db4329 deleted applied migration files
           # from the repo, but the remote project still lists those versions
@@ -156,13 +178,14 @@ jobs:
 
       - name: Push Database Migrations
         id: migrations
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" migrations \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }}"
           # Migrations are pushed via the Management API (--linked) using
           # only the access token — no DB password secret required.
@@ -171,13 +194,14 @@ jobs:
 
       - name: Apply Auth & Email Configuration
         id: config
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" config \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }}"
           # Push [auth] settings from supabase/config.toml — site_url,
           # redirect allow-list and the magic-link email template. Without
@@ -188,13 +212,14 @@ jobs:
 
       - name: Ensure Email Provider Enabled
         id: email
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" email \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }}"
           # The hosted project had the email (password) provider disabled,
           # so GoTrue rejects every password login with "Email logins are
@@ -215,13 +240,14 @@ jobs:
 
       - name: Ensure 2FA Challenge Signing Key Secret
         id: signing
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" signing \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }};email=${{ steps.email.outcome }}"
           # The 2FA challenge signing key is a project-level Edge Function
           # secret. Create it once if missing (idempotent — never rotated
@@ -241,6 +267,7 @@ jobs:
 
       - name: Provision Sentry Vault Secret
         id: vault
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -248,7 +275,7 @@ jobs:
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" vault \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }};email=${{ steps.email.outcome }};signing=${{ steps.signing.outcome }}"
           # SENTRY_DSN lives in Supabase Vault (encrypted at rest), read at
           # runtime via public.read_secret() (vault_secret_reader migration).
@@ -276,13 +303,14 @@ jobs:
 
       - name: Ensure Edge Function Secrets
         id: secrets
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" secrets \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }};email=${{ steps.email.outcome }};signing=${{ steps.signing.outcome }};vault=${{ steps.vault.outcome }}"
           # NODE_ENV=production is an Edge Function secret (env var): it gates
           # the structured-logging and Sentry metrics/error-capture middleware,
@@ -302,6 +330,7 @@ jobs:
 
       - name: Ensure Maestro E2E Credential Secrets
         id: maestro
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
@@ -311,7 +340,7 @@ jobs:
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" maestro \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|maestro:Ensure Maestro E2E Credential Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|maestro:Ensure Maestro E2E Credential Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }};email=${{ steps.email.outcome }};signing=${{ steps.signing.outcome }};vault=${{ steps.vault.outcome }};secrets=${{ steps.secrets.outcome }}"
           # Maestro e2e credentials are project config, not repo files: keep
           # them in Edge Function secrets (Deno.env) and Supabase Vault
@@ -357,13 +386,14 @@ jobs:
 
       - name: Deploy Unified Edge API Function
         id: deploy
+        if: steps.check_creds.outputs.has_creds == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: |
           . .github/scripts/step-tree.sh
           step_tree "Deploy to Supabase Production" deploy \
-            "checkout:Checkout Repository|cli:Setup Supabase CLI|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
+            "checkout:Checkout Repository|cli:Setup Supabase CLI|check_creds:Check Supabase Credentials|repair:Repair Migration History|migrations:Push Database Migrations|config:Apply Auth & Email Configuration|email:Ensure Email Provider Enabled|signing:Ensure 2FA Challenge Signing Key Secret|vault:Provision Sentry Vault Secret|secrets:Ensure Edge Function Secrets|deploy:Deploy Unified Edge API Function" \
             "checkout=${{ steps.checkout.outcome }};cli=${{ steps.cli.outcome }};repair=${{ steps.repair.outcome }};migrations=${{ steps.migrations.outcome }};config=${{ steps.config.outcome }};email=${{ steps.email.outcome }};signing=${{ steps.signing.outcome }};vault=${{ steps.vault.outcome }};secrets=${{ steps.secrets.outcome }}"
           # Resilient deploy with retry to handle transient TLS / network hiccups
           for attempt in 1 2 3; do
@@ -383,6 +413,7 @@ jobs:
   sentry-release:
     name: Sentry Release (Backend)
     needs: deploy
+    if: needs.deploy.outputs.deployed == 'true'
     runs-on: [self-hosted, macOS]
     timeout-minutes: 15
     steps:
@@ -426,6 +457,7 @@ jobs:
   post-deploy-verify:
     name: Post-Deploy Verification (Smoke & Schemathesis)
     needs: deploy
+    if: needs.deploy.outputs.deployed == 'true'
     runs-on: [self-hosted, macOS]
     timeout-minutes: 30
     steps:
