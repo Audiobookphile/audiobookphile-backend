@@ -5,11 +5,13 @@ export const BookmarkCreateSchema = z.object({
   library_item_id: z.string().uuid("Invalid library item ID"),
   time_pos: z.number().min(0).max(999999), // milliseconds up to ~12.5 hours
   title: z.string().max(256).optional(),
+  note: z.string().max(4000).optional(),
 });
 
 export const BookmarkUpdateSchema = z.object({
   time_pos: z.number().min(0).max(999999).optional(),
   title: z.string().max(256).optional(),
+  note: z.string().max(4000).optional(),
 });
 
 export const bookmarksRouter = createOpenApiRouter();
@@ -165,7 +167,7 @@ bookmarksRouter.openapi(createBookmarkRoute, async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { library_item_id, time_pos, title } = parsed.data;
+  const { library_item_id, time_pos, title, note } = parsed.data;
 
   const { data: bookmark, error } = await supabase
     .from("bookmarks")
@@ -174,6 +176,7 @@ bookmarksRouter.openapi(createBookmarkRoute, async (c) => {
       library_item_id,
       time_pos,
       title: title || null,
+      note: note || null,
     })
     .select("*")
     .single();
@@ -203,11 +206,12 @@ bookmarksRouter.openapi(updateBookmarkRoute, async (c) => {
     return c.json({ error: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { time_pos, title } = parsed.data;
+  const { time_pos, title, note } = parsed.data;
 
   const updates: any = {};
   if (time_pos !== undefined) updates.time_pos = time_pos;
   if (title !== undefined) updates.title = title;
+  if (note !== undefined) updates.note = note || null;
 
   const { data: bookmark, error } = await supabase.from("bookmarks").update(
     updates,

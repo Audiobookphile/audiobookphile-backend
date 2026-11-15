@@ -201,3 +201,163 @@ meRouter.openapi(meStatsRoute, async (c: any) => {
     return c.json({ error: "Failed to fetch stats" }, 500);
   }
 });
+
+const ContinueSeriesItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  cover_path: z.string().nullable().optional(),
+  duration: z.number().nullable().optional(),
+  num_tracks: z.number().nullable().optional(),
+  series: z.object({
+    id: z.string(),
+    name: z.string(),
+    sequence: z.string().nullable().optional(),
+  }),
+  authors: z.array(z.string()).optional(),
+  prior_finished_title: z.string().optional(),
+});
+
+const ContinueSeriesResponseSchema = z.object({
+  items: z.array(ContinueSeriesItemSchema),
+});
+
+const meContinueSeriesRoute = {
+  method: "get" as const,
+  path: "/continue-series",
+  tags: ["me"],
+  responses: {
+    200: {
+      description:
+        "List of recommended next books in series where prior books were finished",
+      content: { "application/json": { schema: ContinueSeriesResponseSchema } },
+    },
+    500: {
+      description: "Fetch failure",
+      content: { "application/json": { schema: ServerErrorSchema } },
+    },
+  },
+};
+
+meRouter.openapi(meContinueSeriesRoute, async (c: any) => {
+  const user = c.get("user")!;
+  const supabase = c.get("supabase");
+
+  try {
+    // 1. Fetch finished items for this user
+    const { data: progressData, error: progressError } = await supabase
+      .from("media_progress")
+      .select("library_item_id, library_items(id, title)")
+      .eq("user_id", user.id)
+      .eq("is_finished", true);
+
+    if (progressError) throw progressError;
+
+    if (!progressData || progressData.length === 0) {
+      return c.json({ items: [] }, 200);
+    }
+
+    const finishedMap = new Map<string, string>();
+    for (const p of progressData) {
+      finishedMap.set(p.library_item_id, (p.library_items as any)?.title || "");
+    }
+    const finishedItemIds = Array.from(finishedMap.keys());
+
+    // 2. Fetch series for these finished items
+    const { data: finishedSeriesData, error: fsError } = await supabase
+      .from("book_series")
+      .select("series_id, sequence, library_item_id, series(id, name)")
+      .in("library_item_id", finishedItemIds);
+
+    if (fsError) throw fsError;
+    if (!finishedSeriesData || finishedSeriesData.length === 0) {
+      return c.json({ items: [] }, 200);
+    }
+
+    // Map series_id -> { series, maxSeq, finishedTitle }
+    const seriesMaxMap = new Map<
+      string,
+      { series: any; maxSeq: number; finishedTitle: string }
+    >();
+    for (const row of finishedSeriesData) {
+      if (!row.series_id || !row.series) continue;
+      const seq = parseFloat(row.sequence) || 0;
+      const existing = seriesMaxMap.get(row.series_id);
+      if (!existing || seq > existing.maxSeq) {
+        seriesMaxMap.set(row.series_id, {
+          series: row.series,
+          maxSeq: seq,
+          finishedTitle: finishedMap.get(row.library_item_id) || "",
+        });
+      }
+    }
+
+    const targetSeriesIds = Array.from(seriesMaxMap.keys());
+    if (targetSeriesIds.length === 0) {
+      return c.json({ items: [] }, 200);
+    }
+
+    // 3. Query all books in these series
+    const { data: allSeriesBooks, error: allBooksError } = await supabase
+      .from("book_series")
+      .select(`
+        series_id,
+        sequence,
+        library_items (
+          id,
+          title,
+          cover_path,
+          duration,
+          num_tracks,
+          book_authors ( authors ( id, name ) )
+        )
+      `)
+      .in("series_id", targetSeriesIds);
+
+    if (allBooksError) throw allBooksError;
+
+    // 4. For each series, find the next uncompleted book with sequence > maxSeq
+    const nextBooks: any[] = [];
+    for (const [seriesId, meta] of seriesMaxMap.entries()) {
+      const candidates = (allSeriesBooks || [])
+        .filter((bs: any) => bs.series_id === seriesId && bs.library_items)
+        .map((bs: any) => ({
+          ...bs,
+          seqVal: parseFloat(bs.sequence) || 0,
+        }))
+        .filter((bs: any) =>
+          bs.seqVal > meta.maxSeq && !finishedMap.has(bs.library_items.id)
+        )
+        .sort((a: any, b: any) => a.seqVal - b.seqVal);
+
+      if (candidates.length > 0) {
+        const nextInSeries = candidates[0];
+        const item = nextInSeries.library_items;
+        const authors = (item.book_authors || [])
+          .map((ba: any) => ba.authors?.name)
+          .filter(Boolean);
+
+        nextBooks.push({
+          id: item.id,
+          title: item.title,
+          cover_path: item.cover_path ?? null,
+          duration: item.duration ?? null,
+          num_tracks: item.num_tracks ?? null,
+          series: {
+            id: meta.series.id,
+            name: meta.series.name,
+            sequence: nextInSeries.sequence != null
+              ? String(nextInSeries.sequence)
+              : null,
+          },
+          authors,
+          prior_finished_title: meta.finishedTitle,
+        });
+      }
+    }
+
+    return c.json({ items: nextBooks }, 200);
+  } catch (err: any) {
+    console.error("[me] continue-series failed:", err);
+    return c.json({ error: "Failed to fetch continue-series" }, 500);
+  }
+});
