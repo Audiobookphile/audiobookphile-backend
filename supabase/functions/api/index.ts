@@ -31,6 +31,7 @@ import { twoFactorRouter } from "./routes/twoFactor.ts";
 import { webauthnRouter } from "./routes/webauthn.ts";
 import { aiRouter } from "./aiService.ts";
 import { sentryRouter } from "./routes/sentry.ts";
+import { feedsRouter } from "./routes/feeds.ts";
 
 import { Variables } from "./_shared/types.ts";
 import { ApiError, serviceRoleMiddleware } from "./_shared/errors.ts";
@@ -476,6 +477,7 @@ mountRouter(app, "/api/admin", adminRouter);
 mountRouter(app, "/api/admin/analytics", adminRouter);
 mountRouter(app, "/api/admin-analytics", adminRouter);
 mountRouter(app, "/api/ai", aiRouter);
+mountRouter(app, "/api", feedsRouter);
 
 const chapterAiRouter = new Hono<{ Variables: Variables }>();
 chapterAiRouter.post("/chapter-ai", handleChapterAI);

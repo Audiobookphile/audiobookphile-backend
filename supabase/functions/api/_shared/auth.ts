@@ -131,6 +131,19 @@ export function shouldSkipAuth(c: Context<{ Variables: Variables }>): boolean {
     ) {
       return true;
     }
+
+    // Skip auth for public RSS podcast feeds, enclosure audio streams, and OPDS feeds.
+    // These syndication endpoints manage their own token or Basic Auth verification.
+    if (
+      withApi.startsWith("/api/feed/") ||
+      withoutApi.startsWith("/feed/") ||
+      withApi.includes("/stream") ||
+      withApi.endsWith("/rss") ||
+      withApi.startsWith("/api/opds") ||
+      withoutApi.startsWith("/opds")
+    ) {
+      return true;
+    }
   }
 
   return false;
