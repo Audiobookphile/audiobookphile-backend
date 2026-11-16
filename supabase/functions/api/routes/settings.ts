@@ -73,14 +73,192 @@ const patchApiKeyRoute = createMockRoute("patch", "/api-keys/:id");
 const deleteApiKeyRoute = createMockRoute("delete", "/api-keys/:id");
 
 // SESSIONS
-const getSessionsRoute = createMockRoute("get", "/sessions");
-const getOpenSessionsRoute = createMockRoute("get", "/sessions/open");
-const deleteBatchSessionsRoute = createMockRoute(
-  "post",
-  "/sessions/batch/delete",
-);
-const deleteSessionRoute = createMockRoute("delete", "/sessions/:id");
-const closeSessionRoute = createMockRoute("post", "/session/:id/close");
+const PlaybackSessionSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  user: z.object({ id: z.string(), username: z.string() }).nullable()
+    .optional(),
+  libraryId: z.string(),
+  libraryItemId: z.string(),
+  mediaType: z.string(),
+  mediaMetadata: z.record(z.string(), z.any()).optional(),
+  chapters: z.array(z.any()).optional(),
+  displayTitle: z.string(),
+  displayAuthor: z.string(),
+  coverPath: z.string().nullable().optional(),
+  duration: z.number(),
+  playMethod: z.number(),
+  mediaPlayer: z.string(),
+  deviceInfo: z.record(z.string(), z.any()).nullable().optional(),
+  serverVersion: z.string(),
+  date: z.string(),
+  dayOfWeek: z.string(),
+  timeListening: z.number(),
+  startTime: z.number(),
+  currentTime: z.number(),
+  startedAt: z.number(),
+  updatedAt: z.number(),
+  audioTracks: z.array(z.any()).optional(),
+  libraryItem: z.any().nullable().optional(),
+  open: z.boolean().optional(),
+}).passthrough();
+
+const GetSessionsResponseSchema = z.object({
+  total: z.number(),
+  numPages: z.number(),
+  page: z.number(),
+  itemsPerPage: z.number(),
+  sessions: z.array(PlaybackSessionSchema),
+  userId: z.string().optional(),
+});
+
+const GetOpenSessionsResponseSchema = z.object({
+  sessions: z.array(PlaybackSessionSchema),
+  shareSessions: z.array(PlaybackSessionSchema),
+});
+
+const getSessionsRoute = {
+  method: "get" as const,
+  path: "/sessions",
+  tags: ["settings"],
+  responses: {
+    200: {
+      description: "Paginated listening sessions",
+      content: { "application/json": { schema: GetSessionsResponseSchema } },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+    500: {
+      description: "Internal error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+};
+
+const getOpenSessionsRoute = {
+  method: "get" as const,
+  path: "/sessions/open",
+  tags: ["settings"],
+  responses: {
+    200: {
+      description: "Active open listening sessions",
+      content: {
+        "application/json": { schema: GetOpenSessionsResponseSchema },
+      },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+    500: {
+      description: "Internal error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+};
+
+const deleteBatchSessionsRoute = {
+  method: "post" as const,
+  path: "/sessions/batch/delete",
+  tags: ["settings"],
+  responses: {
+    200: {
+      description: "Batch delete result",
+      content: {
+        "application/json": { schema: z.object({ success: z.boolean() }) },
+      },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+    500: {
+      description: "Internal error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+};
+
+const deleteSessionRoute = {
+  method: "delete" as const,
+  path: "/sessions/:id",
+  tags: ["settings"],
+  request: {
+    params: z.object({ id: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "Session delete result",
+      content: {
+        "application/json": { schema: z.object({ success: z.boolean() }) },
+      },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+    500: {
+      description: "Internal error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+};
+
+const closeSessionRoute = {
+  method: "post" as const,
+  path: "/sessions/:id/close",
+  tags: ["settings"],
+  request: {
+    params: z.object({ id: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "Close session result",
+      content: {
+        "application/json": { schema: z.object({ success: z.boolean() }) },
+      },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+  },
+};
+
+const closeSessionAltRoute = {
+  method: "post" as const,
+  path: "/session/:id/close",
+  tags: ["settings"],
+  request: {
+    params: z.object({ id: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "Close session result",
+      content: {
+        "application/json": { schema: z.object({ success: z.boolean() }) },
+      },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "Admin role required",
+      content: { "application/json": { schema: ForbiddenSchema } },
+    },
+  },
+};
 
 // SHARE MEDIA ITEM
 const postShareMediaItemRoute = createMockRoute("post", "/share/mediaitem");
@@ -323,36 +501,257 @@ settingsRouter.openapi(deleteApiKeyRoute, (c) => {
   return c.json({ success: true }, 200);
 });
 
-settingsRouter.openapi(getSessionsRoute, (c) => {
+settingsRouter.openapi(getSessionsRoute, async (c) => {
   if (!adminCheck(c)) {
     return c.json({ error: "Forbidden: Admin access required" }, 403);
   }
-  return c.json({ sessions: [] }, 200);
+  const supabase = c.get("supabase");
+  try {
+    const url = new URL(c.req.url);
+    const page = Math.max(
+      1,
+      parseInt(url.searchParams.get("page") || "1", 10) || 1,
+    );
+    const itemsPerPage = Math.max(
+      1,
+      Math.min(
+        100,
+        parseInt(url.searchParams.get("itemsPerPage") || "25", 10) || 25,
+      ),
+    );
+    const sortParam = url.searchParams.get("sort") || "updatedAt";
+    const descParam = url.searchParams.get("desc");
+    const isDesc = descParam === "1" || descParam === "true";
+    const userFilter = url.searchParams.get("user") || undefined;
+
+    const sortMap: Record<string, string> = {
+      updatedAt: "updated_at",
+      createdAt: "created_at",
+      displayTitle: "display_title",
+      playMethod: "play_method",
+      timeListening: "time_listening",
+      currentTime: "current_time_pos",
+    };
+    const dbSortCol = sortMap[sortParam] || "updated_at";
+
+    let query = supabase
+      .from("playback_sessions")
+      .select("*, profiles:user_id(id, username)", { count: "exact" });
+
+    if (userFilter) {
+      query = query.eq("user_id", userFilter);
+    }
+
+    const from = (page - 1) * itemsPerPage;
+    const to = from + itemsPerPage - 1;
+
+    const { data, count, error } = await query
+      .order(dbSortCol, { ascending: !isDesc })
+      .range(from, to);
+
+    if (error) {
+      console.error(
+        "[settings/sessions] failed to query playback_sessions:",
+        error,
+      );
+      return c.json({
+        total: 0,
+        numPages: 1,
+        page,
+        itemsPerPage,
+        sessions: [],
+      }, 200);
+    }
+
+    const sessions = (data || []).map((row: any) => ({
+      id: String(row.id),
+      userId: String(row.user_id || ""),
+      user: row.profiles
+        ? { id: row.profiles.id, username: row.profiles.username }
+        : null,
+      libraryId: String(row.library_id || ""),
+      libraryItemId: String(row.media_item_id || ""),
+      mediaType: row.media_item_type || "book",
+      mediaMetadata: row.media_metadata || {},
+      chapters: [],
+      displayTitle: row.display_title || "Unknown Title",
+      displayAuthor: row.display_author || "Unknown Author",
+      coverPath: row.cover_path || null,
+      duration: Number(row.duration) || 0,
+      playMethod: Number(row.play_method) || 0,
+      mediaPlayer: row.media_player || "Web Player",
+      deviceInfo: row.device_info || null,
+      serverVersion: row.server_version || "1.0.0",
+      date: row.session_date ||
+        (row.created_at
+          ? new Date(row.created_at).toISOString().split("T")[0]
+          : ""),
+      dayOfWeek: row.day_of_week || "",
+      timeListening: Number(row.time_listening) || 0,
+      startTime: 0,
+      currentTime: Number(row.current_time_pos) || 0,
+      startedAt: row.created_at
+        ? new Date(row.created_at).getTime()
+        : Date.now(),
+      updatedAt: row.updated_at
+        ? new Date(row.updated_at).getTime()
+        : Date.now(),
+      audioTracks: [],
+      libraryItem: null,
+      open: false,
+    }));
+
+    const total = count || 0;
+    const numPages = Math.max(1, Math.ceil(total / itemsPerPage));
+
+    return c.json({
+      total,
+      numPages,
+      page,
+      itemsPerPage,
+      sessions,
+      ...(userFilter ? { userId: userFilter } : {}),
+    }, 200);
+  } catch (err) {
+    console.error("[settings/sessions] unexpected error:", err);
+    return c.json(
+      { error: getErrorMessage(err) || "Failed to fetch sessions" },
+      500,
+    );
+  }
 });
-settingsRouter.openapi(getOpenSessionsRoute, (c) => {
+
+settingsRouter.openapi(getOpenSessionsRoute, async (c) => {
   if (!adminCheck(c)) {
     return c.json({ error: "Forbidden: Admin access required" }, 403);
   }
-  return c.json({ sessions: [] }, 200);
+  const supabase = c.get("supabase");
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from("playback_sessions")
+      .select("*, profiles:user_id(id, username)")
+      .gte("updated_at", fiveMinutesAgo)
+      .order("updated_at", { ascending: false });
+
+    if (error) {
+      console.warn("[settings/sessions/open] query error:", error);
+      return c.json({ sessions: [], shareSessions: [] }, 200);
+    }
+
+    const sessions = (data || []).map((row: any) => ({
+      id: String(row.id),
+      userId: String(row.user_id || ""),
+      user: row.profiles
+        ? { id: row.profiles.id, username: row.profiles.username }
+        : null,
+      libraryId: String(row.library_id || ""),
+      libraryItemId: String(row.media_item_id || ""),
+      mediaType: row.media_item_type || "book",
+      mediaMetadata: row.media_metadata || {},
+      chapters: [],
+      displayTitle: row.display_title || "Unknown Title",
+      displayAuthor: row.display_author || "Unknown Author",
+      coverPath: row.cover_path || null,
+      duration: Number(row.duration) || 0,
+      playMethod: Number(row.play_method) || 0,
+      mediaPlayer: row.media_player || "Web Player",
+      deviceInfo: row.device_info || null,
+      serverVersion: row.server_version || "1.0.0",
+      date: row.session_date ||
+        (row.created_at
+          ? new Date(row.created_at).toISOString().split("T")[0]
+          : ""),
+      dayOfWeek: row.day_of_week || "",
+      timeListening: Number(row.time_listening) || 0,
+      startTime: 0,
+      currentTime: Number(row.current_time_pos) || 0,
+      startedAt: row.created_at
+        ? new Date(row.created_at).getTime()
+        : Date.now(),
+      updatedAt: row.updated_at
+        ? new Date(row.updated_at).getTime()
+        : Date.now(),
+      audioTracks: [],
+      libraryItem: null,
+      open: true,
+    }));
+
+    return c.json({ sessions, shareSessions: [] }, 200);
+  } catch (err) {
+    console.error("[settings/sessions/open] unexpected error:", err);
+    return c.json({ sessions: [], shareSessions: [] }, 200);
+  }
 });
-settingsRouter.openapi(deleteBatchSessionsRoute, (c) => {
+
+settingsRouter.openapi(deleteBatchSessionsRoute, async (c) => {
   if (!adminCheck(c)) {
     return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
+  const supabase = c.get("supabase");
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const sessionIds = Array.isArray(body?.sessionIds) ? body.sessionIds : [];
+    if (sessionIds.length > 0) {
+      const { error } = await supabase
+        .from("playback_sessions")
+        .delete()
+        .in("id", sessionIds);
+      if (error) {
+        console.error("[settings/sessions/batch/delete] error:", error);
+        return c.json({ error: error.message }, 500);
+      }
+    }
+    return c.json({ success: true }, 200);
+  } catch (err) {
+    console.error("[settings/sessions/batch/delete] unexpected error:", err);
+    return c.json(
+      { error: getErrorMessage(err) || "Failed to batch delete sessions" },
+      500,
+    );
+  }
+});
+
+settingsRouter.openapi(deleteSessionRoute, async (c) => {
+  if (!adminCheck(c)) {
+    return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
+  const supabase = c.get("supabase");
+  const id = c.req.param("id");
+  if (!id) return c.json({ error: "Missing session id" }, 400);
+
+  const { error } = await supabase
+    .from("playback_sessions")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error(`[settings/sessions] delete error for ${id}:`, error);
+    return c.json({ error: error.message }, 500);
   }
   return c.json({ success: true }, 200);
 });
-settingsRouter.openapi(deleteSessionRoute, (c) => {
+
+const handleCloseSession = async (c: Context<{ Variables: Variables }>) => {
   if (!adminCheck(c)) {
     return c.json({ error: "Forbidden: Admin access required" }, 403);
   }
+  const supabase = c.get("supabase");
+  const id = c.req.param("id");
+  if (!id) return c.json({ error: "Missing session id" }, 400);
+
+  await supabase
+    .from("playback_sessions")
+    .update({
+      updated_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    })
+    .eq("id", id);
+
   return c.json({ success: true }, 200);
-});
-settingsRouter.openapi(closeSessionRoute, (c) => {
-  if (!adminCheck(c)) {
-    return c.json({ error: "Forbidden: Admin access required" }, 403);
-  }
-  return c.json({ success: true }, 200);
-});
+};
+
+settingsRouter.openapi(closeSessionRoute, handleCloseSession);
+settingsRouter.openapi(closeSessionAltRoute, handleCloseSession);
 
 settingsRouter.openapi(postShareMediaItemRoute, (c) => {
   if (!adminCheck(c)) {

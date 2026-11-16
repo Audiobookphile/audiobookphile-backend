@@ -726,6 +726,48 @@ export class PlaybackService {
       : (Number((item as any).duration) || 0);
     const sessionUuid = crypto.randomUUID();
 
+    // Persist playback session in background so listening history and sessions management stay in sync
+    const today = new Date();
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    (async () => {
+      try {
+        await supabase.from("playback_sessions").insert({
+          id: sessionUuid,
+          user_id: userId,
+          library_id: item.library_id,
+          media_item_id: libraryItemId,
+          media_item_type: item.media_type || "book",
+          display_title: item.title || "Unknown Title",
+          display_author: authorName,
+          duration: totalDuration,
+          play_method: 0,
+          media_player: "Web Player",
+          device_info: (_deviceInfo as any) || {},
+          current_time_pos: currentTime,
+          server_version: "1.0.0",
+          cover_path: item.cover_path || null,
+          time_listening: 0,
+          session_date: today.toISOString().split("T")[0],
+          day_of_week: days[today.getDay()],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      } catch (insertErr) {
+        console.warn(
+          `[PlaybackService] Failed to insert initial playback_session ${sessionUuid}:`,
+          insertErr,
+        );
+      }
+    })();
+
     return {
       id: `${libraryItemId}__${sessionUuid}`,
       userId: userId,
@@ -768,7 +810,7 @@ export class PlaybackService {
     progress?: number,
     episodeId?: string,
   ) {
-    const [libraryItemId, _sessionUuid] = sessionId.split("__");
+    const [libraryItemId, sessionUuid] = sessionId.split("__");
     if (!libraryItemId) return { success: false, error: "Invalid session ID" };
 
     try {
@@ -783,6 +825,33 @@ export class PlaybackService {
           progress,
         },
       );
+
+      if (sessionUuid && sessionUuid.length === 36) {
+        (async () => {
+          try {
+            const { data: existing } = await supabase
+              .from("playback_sessions")
+              .select("time_listening")
+              .eq("id", sessionUuid)
+              .maybeSingle();
+
+            const existingTime = existing?.time_listening || 0;
+            await supabase
+              .from("playback_sessions")
+              .update({
+                current_time_pos: currentTime,
+                time_listening: existingTime + (_timeListened || 0),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", sessionUuid);
+          } catch (sessionErr) {
+            console.warn(
+              `[PlaybackService] Failed to update playback_session ${sessionUuid}:`,
+              sessionErr,
+            );
+          }
+        })();
+      }
     } catch (e: unknown) {
       console.error(`[PlaybackService] Failed to sync session:`, e);
       return {
