@@ -51,3 +51,27 @@ Deno.test("Libraries: GET /api/libraries/:id/personalized requires authenticatio
   const res = await app.request(req);
   assertEquals(res.status >= 400, true);
 });
+
+Deno.test("Bookmarks: GET /api/me/bookmarks/export requires authentication", async () => {
+  const req = new Request(
+    "http://localhost/api/me/bookmarks/export?libraryItemId=a0000000-0000-4000-8000-000000000001&format=markdown",
+    {
+      method: "GET",
+    },
+  );
+
+  const res = await app.request(req);
+  assertEquals(res.status >= 400, true);
+});
+
+Deno.test("Bookmarks: GET /api/me/bookmarks/export rejects invalid UUID", async () => {
+  const req = new Request(
+    "http://localhost/api/me/bookmarks/export?libraryItemId=invalid-not-a-uuid",
+    {
+      method: "GET",
+    },
+  );
+
+  const res = await app.request(req);
+  assertEquals(res.status >= 400, true);
+});
