@@ -32,6 +32,7 @@ import { webauthnRouter } from "./routes/webauthn.ts";
 import { aiRouter } from "./aiService.ts";
 import { sentryRouter } from "./routes/sentry.ts";
 import { feedsRouter } from "./routes/feeds.ts";
+import { notificationsRouter } from "./routes/notifications.ts";
 
 import { Variables } from "./_shared/types.ts";
 import { ApiError, serviceRoleMiddleware } from "./_shared/errors.ts";
@@ -478,6 +479,7 @@ mountRouter(app, "/api/admin/analytics", adminRouter);
 mountRouter(app, "/api/admin-analytics", adminRouter);
 mountRouter(app, "/api/ai", aiRouter);
 mountRouter(app, "/api", feedsRouter);
+mountRouter(app, "/api", notificationsRouter);
 
 const chapterAiRouter = new Hono<{ Variables: Variables }>();
 chapterAiRouter.post("/chapter-ai", handleChapterAI);
