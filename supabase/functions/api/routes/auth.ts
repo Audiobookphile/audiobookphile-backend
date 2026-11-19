@@ -879,7 +879,7 @@ authRouter.openapi(magicLinkRoute, async (c) => {
     const { error } = await anonSupabase.auth.signInWithOtp({
       email,
       options: {
-        shouldCreateUser: true,
+        shouldCreateUser: false,
         emailRedirectTo: target,
       },
     });
@@ -890,9 +890,17 @@ authRouter.openapi(magicLinkRoute, async (c) => {
         error.message,
         error.code,
       );
+      const isSignupDisallowed =
+        error.message?.toLowerCase().includes("signups not allowed") ||
+        error.message?.toLowerCase().includes("otp") ||
+        error.code === "otp_disabled";
       return c.json({
-        error: error.message || authErrorHandlers.VALIDATION_ERROR().message,
-        code: error.code || authErrorHandlers.VALIDATION_ERROR().code,
+        error: isSignupDisallowed
+          ? "No account was found with this email address. Registration is invitation-only."
+          : (error.message || authErrorHandlers.VALIDATION_ERROR().message),
+        code: isSignupDisallowed
+          ? "ACCOUNT_NOT_FOUND"
+          : (error.code || authErrorHandlers.VALIDATION_ERROR().code),
       }, authErrorHandlers.VALIDATION_ERROR().statusCode as 400);
     }
 
