@@ -123,13 +123,20 @@ Deno.test("Notifications API - test webhook delivery returns latency and event",
   assertExists(json.latencyMs);
 });
 
-Deno.test("Notifications API - dispatchLibraryNotification executes safely", async () => {
-  const result = await dispatchLibraryNotification("onItemAdded", {
-    libraryItemId: "item-123",
-    title: "Project Hail Mary",
-    author: "Andy Weir",
-  });
-  assertExists(result);
-  assertEquals(typeof result.dispatched, "number");
-  assertEquals(typeof result.failed, "number");
+Deno.test("Notifications API - dispatchLibraryNotification executes safely for all library events", async () => {
+  const events = [
+    "onItemAdded",
+    "onItemUpdated",
+    "onItemDeleted",
+    "onUserLogin",
+  ] as const;
+  for (const event of events) {
+    const result = await dispatchLibraryNotification(event, {
+      testId: "test-event-id",
+      timestamp: new Date().toISOString(),
+    });
+    assertExists(result);
+    assertEquals(typeof result.dispatched, "number");
+    assertEquals(typeof result.failed, "number");
+  }
 });

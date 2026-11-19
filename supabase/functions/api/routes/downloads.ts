@@ -28,6 +28,7 @@ import {
   isAudioFileName,
   resolveAudioMediaInfo,
 } from "../_shared/domain/playback.ts";
+import { dispatchLibraryNotification } from "./notifications.ts";
 
 // ===== Zod schemas for /upload/finalize =====
 const UploadCheckSchema = z.object({
@@ -1347,6 +1348,27 @@ export async function executeFinalize(
       `[upload-finalize] warnings for ${libraryItemId}:`,
       JSON.stringify(finalizeWarnings),
     );
+  }
+
+  // Dispatch automated library event notifications (best-effort, non-blocking)
+  if (existingItem) {
+    dispatchLibraryNotification("onItemUpdated", {
+      itemId: libraryItemId,
+      bookId,
+      libraryId,
+      title: title || existingItem.title,
+      author: author || existingItem.author_names_first_last,
+      duration: recomputedDuration,
+    }).catch(() => {});
+  } else {
+    dispatchLibraryNotification("onItemAdded", {
+      itemId: libraryItemId,
+      bookId,
+      libraryId,
+      title: title || "Untitled Audiobook",
+      author: author || "Unknown Author",
+      duration: recomputedDuration,
+    }).catch(() => {});
   }
 
   return {

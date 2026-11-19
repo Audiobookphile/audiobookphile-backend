@@ -30,6 +30,7 @@ import {
   SuccessSchema,
   UserPayloadSchema,
 } from "../_shared/openapi.ts";
+import { dispatchLibraryNotification } from "./notifications.ts";
 
 export const authRouter = createOpenApiRouter();
 
@@ -545,6 +546,12 @@ authRouter.openapi(loginRoute, async (c) => {
         created_at: authData.user.created_at,
       },
     );
+
+    // Dispatch login event notification (best-effort, non-blocking)
+    dispatchLibraryNotification("onUserLogin", {
+      userId: authData.user.id,
+      email: authData.user.email,
+    }).catch(() => {});
 
     return c.json(userPayload, 200);
   } catch (err) {

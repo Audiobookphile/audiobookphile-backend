@@ -30,6 +30,7 @@ import { getErrorMessage } from "../_shared/errors.ts";
 import { errorEnvelope } from "../_shared/http.ts";
 import { sanitizeString } from "../_shared/validation.ts";
 import { StorageRouter } from "../../_shared/storage-router.ts";
+import { dispatchLibraryNotification } from "./notifications.ts";
 
 export const itemsRouter = createOpenApiRouter();
 
@@ -776,6 +777,14 @@ itemsRouter.openapi(deleteItemRoute, async (c) => {
           ? `, warnings: ${outcome.warnings.join("; ")}`
           : ""),
     );
+    // Dispatch library deletion event notification (best-effort, non-blocking)
+    dispatchLibraryNotification("onItemDeleted", {
+      itemId: outcome.deletedId ?? itemId,
+      hardDelete: hardDeleteRequested,
+      removedFiles: outcome.removedFiles,
+      filesRetained: outcome.filesRetained,
+    }).catch(() => {});
+
     const responseBody = {
       success: true as const,
       deletedId: outcome.deletedId ?? itemId,
